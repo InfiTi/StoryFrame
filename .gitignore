@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 输出文件
+outputs/
+
+# 配置文件（含 API Key）
+config.json
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log

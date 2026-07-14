@@ -1,0 +1,7 @@
+# StoryFrame - 分镜图生成器
+# 依赖列表
+
+PySide6>=6.6.0
+openai>=1.12.0
+httpx>=0.27.0
+Pillow>=10.0.0
