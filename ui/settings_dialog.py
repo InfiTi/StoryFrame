@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit,
     QComboBox, QSpinBox, QDoubleSpinBox,
     QDialogButtonBox, QGroupBox, QMessageBox,
+    QPushButton, QHBoxLayout, QFileDialog,
 )
 from PySide6.QtCore import Qt
 from config import load_config, save_config
@@ -132,6 +133,21 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(sb_group)
 
+        # === 商品目录设置 ===
+        prod_group = QGroupBox("商品目录")
+        prod_form = QFormLayout(prod_group)
+
+        self.prod_dir = QLineEdit(self.config.get("product", {}).get("directory", ""))
+        self.prod_dir.setPlaceholderText("如：F:\\Obsidian\\带货\\商品图")
+        browse_btn = QPushButton("浏览...")
+        browse_btn.clicked.connect(self._browse_product_dir)
+        dir_layout = QHBoxLayout()
+        dir_layout.addWidget(self.prod_dir)
+        dir_layout.addWidget(browse_btn)
+        prod_form.addRow("商品目录：", dir_layout)
+
+        layout.addWidget(prod_group)
+
         # === 按钮 ===
         buttons = QDialogButtonBox(
             QDialogButtonBox.Save | QDialogButtonBox.Cancel
@@ -139,6 +155,12 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self._save)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _browse_product_dir(self):
+        """选择商品目录"""
+        path = QFileDialog.getExistingDirectory(self, "选择商品目录")
+        if path:
+            self.prod_dir.setText(path)
 
     def _save(self):
         """保存配置"""
@@ -155,6 +177,10 @@ class SettingsDialog(QDialog):
 
         self.config["storyboard"]["frame_count"] = self.sb_frames.value()
         self.config["storyboard"]["duration"] = self.sb_duration.value()
+
+        if "product" not in self.config:
+            self.config["product"] = {}
+        self.config["product"]["directory"] = self.prod_dir.text().strip()
 
         save_config(self.config)
         self.accept()

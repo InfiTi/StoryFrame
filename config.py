@@ -35,6 +35,10 @@ DEFAULT_CONFIG = {
         "frame_count": 5,
         "duration": 15,  # 总时长（秒）
     },
+    # 商品目录
+    "product": {
+        "directory": "",  # 商品信息 Markdown 所在目录
+    },
 }
 
 

@@ -19,7 +19,7 @@ from core.templates import TEMPLATES, get_template_by_name
 from core.llm_client import LLMClient
 from core.image_client import ImageClient
 from core.storyboard import generate_storyboard, Storyboard, StoryboardFrame
-from core.product_parser import parse_product_markdown, ProductInfo
+from core.product_parser import parse_product_markdown, scan_product_directory, ProductInfo
 from core.exporter import export_json, export_markdown, export_package
 from ui.settings_dialog import SettingsDialog
 from ui.storyboard_view import StoryboardView
@@ -145,12 +145,31 @@ class MainWindow(QMainWindow):
         product_group = QGroupBox("产品输入")
         product_form = QFormLayout(product_group)
 
-        # 导入按钮
-        import_layout = QHBoxLayout()
-        self.import_btn = QPushButton("📂 导入商品信息 (Markdown)")
-        self.import_btn.clicked.connect(self._import_product_info)
-        import_layout.addWidget(self.import_btn)
-        product_form.addRow("", import_layout)
+        # 商品列表
+        product_form.addRow(QLabel("选择商品："))
+        self.product_list = QListWidget()
+        self.product_list.setMaximumHeight(120)
+        self.product_list.setStyleSheet("""
+            QListWidget {
+                background-color: #313244;
+                border: 1px solid #45475a;
+                border-radius: 6px;
+                color: #cdd6f4;
+            }
+            QListWidget::item {
+                padding: 6px 8px;
+                border-radius: 4px;
+            }
+            QListWidget::item:selected {
+                background-color: #89b4fa;
+                color: #1e1e2e;
+            }
+            QListWidget::item:hover {
+                background-color: #45475a;
+            }
+        """)
+        self.product_list.itemClicked.connect(self._on_product_selected)
+        product_form.addRow(self.product_list)
 
         self.product_name_input = QLineEdit()
         self.product_name_input.setPlaceholderText("如：芒果干")
@@ -431,16 +450,31 @@ class MainWindow(QMainWindow):
         )
         self.frame_count_spin.setValue(template.recommended_frames)
 
-    def _import_product_info(self):
-        """导入商品信息 Markdown 文件"""
-        path, _ = QFileDialog.getOpenFileName(
-            self, "选择商品信息文件", "", "Markdown 文件 (*.md)"
-        )
-        if not path:
+    def _load_product_list(self):
+        """从配置的商品目录加载商品列表"""
+        self.product_list.clear()
+        directory = self.config.get("product", {}).get("directory", "")
+        if not directory:
             return
-
         try:
-            info = parse_product_markdown(path)
+            products = scan_product_directory(directory)
+            for p in products:
+                item_text = p["name"]
+                list_item = QListWidgetItem(item_text)
+                list_item.setData(Qt.UserRole, p["md_path"])
+                self.product_list.addItem(list_item)
+            if products:
+                self.status_label.setText(f"已加载 {len(products)} 个商品")
+        except Exception as e:
+            self.status_label.setText(f"加载商品列表失败: {e}")
+
+    def _on_product_selected(self, item):
+        """点击商品列表项，解析对应的 Markdown 文件"""
+        md_path = item.data(Qt.UserRole)
+        if not md_path:
+            return
+        try:
+            info = parse_product_markdown(md_path)
             self.product_info = info
 
             # 填充输入框
@@ -454,11 +488,10 @@ class MainWindow(QMainWindow):
             # 状态提示
             texture_cn = "、".join(info.texture_keywords[:8]) if info.texture_keywords else "未检测到"
             self.status_label.setText(
-                f"已导入：{info.name} | 质感关键词：{texture_cn}"
+                f"已选择：{info.name} | 质感关键词：{texture_cn}"
             )
-
         except Exception as e:
-            QMessageBox.critical(self, "导入失败", f"解析商品信息失败：\n\n{e}")
+            QMessageBox.critical(self, "解析失败", f"解析商品信息失败：\n\n{e}")
 
     def _open_settings(self):
         """打开设置"""
@@ -466,6 +499,8 @@ class MainWindow(QMainWindow):
         if dlg.exec():
             self.config = load_config()
             self.status_label.setText("设置已保存")
+        self._load_product_list()
+
 
     def _generate_script(self):
         """生成分镜脚本"""

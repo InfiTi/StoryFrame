@@ -68,6 +68,32 @@ TEXTURE_MAP = {
 }
 
 
+def scan_product_directory(directory: str) -> list[dict]:
+    """扫描商品目录，返回包含 .md 文件的商品列表
+    返回 [{name, md_path, folder}, ...]
+    """
+    result = []
+    if not directory:
+        return result
+    base = Path(directory)
+    if not base.exists():
+        return result
+    for item in sorted(base.iterdir()):
+        if not item.is_dir():
+            continue
+        # 在子文件夹中找 .md 文件
+        md_files = list(item.glob("*.md"))
+        if not md_files:
+            continue
+        # 用文件夹名作为商品名
+        result.append({
+            "name": item.name,
+            "md_path": str(md_files[0]),
+            "folder": str(item),
+        })
+    return result
+
+
 def parse_product_markdown(file_path: str) -> ProductInfo:
     """解析商品信息 Markdown 文件，提取产品特征"""
     path = Path(file_path)

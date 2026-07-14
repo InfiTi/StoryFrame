@@ -65,6 +65,11 @@ class LLMClient:
             "max_tokens": 16384,
             "stream": True,
         }
+        # 禁用 reasoning 以节省 token
+        try:
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
+        except Exception:
+            pass
 
         with self.client.stream("POST", url, json=payload, headers=headers, timeout=300.0) as resp:
             resp.raise_for_status()
