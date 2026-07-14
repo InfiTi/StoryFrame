@@ -91,7 +91,7 @@ class SettingsDialog(QDialog):
         img_form = QFormLayout(img_group)
 
         self.img_provider = QComboBox()
-        self.img_provider.addItems(["dalle", "flux", "sd", "comfyui"])
+        self.img_provider.addItems(["dalle", "flux", "sd", "comfyui", "kontext"])
         self.img_provider.setCurrentText(self.config["image"]["provider"])
         img_form.addRow("Provider：", self.img_provider)
 
@@ -115,16 +115,16 @@ class SettingsDialog(QDialog):
         self.img_quality.setCurrentText(self.config["image"]["quality"])
         img_form.addRow("质量：", self.img_quality)
 
-        # ComfyUI 专属设置
-        self.comfy_workflow = QLineEdit(self.config.get("image", {}).get("workflow", "workflows/flux_img2img_api.json"))
+        # ComfyUI / Kontext 工作流设置
+        self.comfy_workflow = QLineEdit(self.config.get("image", {}).get("workflow", "workflows/flux_kontext_api.json"))
         self.comfy_workflow.setPlaceholderText("工作流 JSON 路径（相对项目目录或绝对路径）")
-        img_form.addRow("ComfyUI 工作流：", self.comfy_workflow)
+        img_form.addRow("工作流文件：", self.comfy_workflow)
 
         self.img_denoise = QDoubleSpinBox()
         self.img_denoise.setRange(0.1, 1.0)
         self.img_denoise.setSingleStep(0.05)
         self.img_denoise.setValue(self.config.get("image", {}).get("denoise", 0.4))
-        img_form.addRow("去噪强度（图生图）：", self.img_denoise)
+        img_form.addRow("去噪强度（img2img）：", self.img_denoise)
 
         layout.addWidget(img_group)
 

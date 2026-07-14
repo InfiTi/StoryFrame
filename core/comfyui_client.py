@@ -104,6 +104,58 @@ class ComfyUIClient:
         with open(output_path, "wb") as f:
             f.write(resp.content)
 
+    def _fill_workflow_common(self, workflow: dict, uploaded_name: str,
+                              prompt: str, actual_seed: int,
+                              denoise: float, width: int, height: int):
+        """填充工作流参数（通用逻辑）"""
+        for node_id, node in workflow.items():
+            cls = node.get("class_type", "")
+            inputs = node.get("inputs", {})
+
+            if cls == "LoadImage":
+                inputs["image"] = uploaded_name
+
+            elif cls == "CheckpointLoaderSimple":
+                pass
+
+            elif cls == "CLIPTextEncode":
+                old_text = inputs.get("text", "")
+                if old_text == "":
+                    full_prompt = f"{prompt}, no text, no words, no letters, no logo, no watermark, no label"
+                    inputs["text"] = full_prompt
+
+            elif cls == "KSampler":
+                inputs["seed"] = actual_seed
+                inputs["denoise"] = denoise
+
+            elif cls == "EmptyLatentImage":
+                inputs["width"] = width
+                inputs["height"] = height
+
+    def _wait_and_download(self, workflow: dict, actual_seed: int,
+                           output_path: str) -> tuple[bool, str]:
+        """提交工作流、等待完成、下载图片（通用逻辑）"""
+        prompt_id = self.queue_prompt(workflow)
+        history = self.get_history(prompt_id, timeout=600)
+        if not history:
+            return False, "生成超时（600秒）"
+
+        status = history.get("status", {})
+        if status.get("status_str") == "error":
+            msgs = status.get("messages", [])
+            return False, f"生成失败: {msgs}"
+
+        outputs = history.get("outputs", {})
+        for node_id, node_output in outputs.items():
+            if "images" in node_output:
+                for img in node_output["images"]:
+                    filename = img.get("filename", "output.png")
+                    subfolder = img.get("subfolder", "")
+                    self.download_image(filename, subfolder, output_path)
+                    return True, f"生成成功 (seed={actual_seed})"
+
+        return False, "未找到输出图片"
+
     def generate_img2img(
         self,
         workflow_path: str,
@@ -116,30 +168,57 @@ class ComfyUIClient:
         height: int = 1024,
     ) -> tuple[bool, str]:
         """
-        图生图：用参考图 + 提示词生成图片
-
-        参数:
-            workflow_path: 工作流 JSON 文件路径
-            reference_image: 参考图路径
-            prompt: 提示词（英文）
-            output_path: 输出图片路径
-            denoise: 去噪强度 (0-1)，越高越偏离参考图
-            seed: 随机种子，-1 为随机
-            width: 输出宽度
-            height: 输出高度
-
-        返回: (成功, 信息)
+        图生图：用参考图 + 提示词生成图片（原 img2img 方式）
         """
         try:
-            # 1. 加载工作流
             with open(workflow_path, "r", encoding="utf-8") as f:
                 workflow = json.load(f)
 
-            # 2. 上传参考图
             uploaded_name = self.upload_image(reference_image)
-
-            # 3. 填充工作流参数
             actual_seed = seed if seed >= 0 else random.randint(0, 2**32 - 1)
+
+            self._fill_workflow_common(workflow, uploaded_name, prompt,
+                                       actual_seed, denoise, width, height)
+
+            return self._wait_and_download(workflow, actual_seed, output_path)
+
+        except Exception as e:
+            return False, str(e)
+
+    def generate_kontext(
+        self,
+        workflow_path: str,
+        reference_images: list,
+        prompt: str,
+        output_path: str,
+        guidance: float = 2.5,
+        steps: int = 30,
+        seed: int = -1,
+    ) -> tuple[bool, str]:
+        """
+        使用 Flux Kontext 模型生成图片
+        Kontext 专门做图像编辑，输入参考图 + 文字指令，保持主体一致性
+
+        参数:
+            workflow_path: Kontext 工作流 JSON 路径
+            reference_images: 参考图路径列表（至少1张，支持多张）
+            prompt: 编辑指令/提示词（英文）
+            output_path: 输出图片路径
+            guidance: Flux 引导强度 (1-12)，越低越自由，越高越遵循提示词
+            steps: 采样步数
+            seed: 随机种子，-1 为随机
+        """
+        try:
+            with open(workflow_path, "r", encoding="utf-8") as f:
+                workflow = json.load(f)
+
+            actual_seed = seed if seed >= 0 else random.randint(0, 2**32 - 1)
+
+            # 上传第一张参考图，填入 LoadImage
+            if not reference_images:
+                return False, "Kontext 需要至少一张参考图"
+
+            uploaded_name = self.upload_image(reference_images[0])
 
             for node_id, node in workflow.items():
                 cls = node.get("class_type", "")
@@ -148,52 +227,22 @@ class ComfyUIClient:
                 if cls == "LoadImage":
                     inputs["image"] = uploaded_name
 
-                elif cls == "CheckpointLoaderSimple":
-                    # 保持工作流中预设的模型
-                    pass
-
                 elif cls == "CLIPTextEncode":
-                    # 所有空的 CLIPTextEncode 都填入提示词
                     old_text = inputs.get("text", "")
                     if old_text == "":
-                        # 自动追加禁止文字约束
+                        # Kontext 用编辑指令风格，追加禁止文字约束
                         full_prompt = f"{prompt}, no text, no words, no letters, no logo, no watermark, no label"
                         inputs["text"] = full_prompt
-                    # 非空的保持不变（可能是有意义的负面提示词）
+
+                elif cls == "FluxGuidance":
+                    inputs["guidance"] = guidance
 
                 elif cls == "KSampler":
                     inputs["seed"] = actual_seed
-                    inputs["denoise"] = denoise
+                    inputs["steps"] = steps
+                    inputs["denoise"] = 1.0  # Kontext 用 denoise=1.0
 
-                elif cls == "EmptyLatentImage":
-                    inputs["width"] = width
-                    inputs["height"] = height
-
-            # 4. 提交工作流
-            prompt_id = self.queue_prompt(workflow)
-
-            # 5. 等待完成
-            history = self.get_history(prompt_id, timeout=300)
-            if not history:
-                return False, "生成超时（300秒）"
-
-            # 6. 检查错误
-            status = history.get("status", {})
-            if status.get("status_str") == "error":
-                msgs = status.get("messages", [])
-                return False, f"生成失败: {msgs}"
-
-            # 7. 下载图片
-            outputs = history.get("outputs", {})
-            for node_id, node_output in outputs.items():
-                if "images" in node_output:
-                    for img in node_output["images"]:
-                        filename = img.get("filename", "output.png")
-                        subfolder = img.get("subfolder", "")
-                        self.download_image(filename, subfolder, output_path)
-                        return True, f"生成成功 (seed={actual_seed})"
-
-            return False, "未找到输出图片"
+            return self._wait_and_download(workflow, actual_seed, output_path)
 
         except Exception as e:
             return False, str(e)

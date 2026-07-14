@@ -82,7 +82,7 @@ class GenerateImageWorker(QObject):
     error = Signal(int, str)     # frame_index, error_msg
 
     def __init__(self, image_config, frame_index, prompt, output_path,
-                 reference_image=None, denoise=0.6):
+                 reference_image=None, denoise=0.6, reference_images=None):
         super().__init__()
         self.image_config = image_config
         self.frame_index = frame_index
@@ -90,6 +90,7 @@ class GenerateImageWorker(QObject):
         self.output_path = output_path
         self.reference_image = reference_image
         self.denoise = denoise
+        self.reference_images = reference_images
 
     def run(self):
         try:
@@ -105,6 +106,7 @@ class GenerateImageWorker(QObject):
                 self.prompt, self.output_path,
                 reference_image=self.reference_image,
                 denoise=self.denoise,
+                reference_images=self.reference_images,
             )
             client.close()
             if ok:
@@ -797,15 +799,17 @@ class MainWindow(QMainWindow):
         if not self.current_storyboard:
             return
 
-        # 如果是 ComfyUI 或 SD provider，让用户选参考图
+        # 如果是 ComfyUI/SD/Kontext provider，让用户选参考图
         provider = self.config["image"].get("provider", "")
         reference_image = None
+        reference_images = None
         denoise = self.config["image"].get("denoise", 0.6)
 
-        if provider in ("comfyui", "sd"):
+        if provider in ("comfyui", "sd", "kontext"):
             reference_image = self._select_reference_image()
             if reference_image is None:
                 return  # 用户取消
+            reference_images = [reference_image]
 
         # 创建输出目录
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -825,6 +829,7 @@ class MainWindow(QMainWindow):
         self._image_queue = list(indices)  # 待生成队列
         self._image_project_dir = project_dir
         self._image_reference = reference_image
+        self._image_reference_images = reference_images
         self._image_denoise = denoise
 
         # 串行生成第一帧
@@ -852,6 +857,7 @@ class MainWindow(QMainWindow):
             output_path=output_path,
             reference_image=self._image_reference,
             denoise=self._image_denoise,
+            reference_images=getattr(self, '_image_reference_images', None),
         )
         worker.moveToThread(thread)
         thread.started.connect(worker.run)

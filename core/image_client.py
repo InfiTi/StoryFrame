@@ -22,7 +22,8 @@ class ImageClient:
         self.client = httpx.Client(timeout=300.0)
 
     def generate(self, prompt: str, output_path: str,
-                 reference_image: str = None, denoise: float = 0.6) -> tuple[bool, str]:
+                 reference_image: str = None, denoise: float = 0.6,
+                 reference_images: list = None) -> tuple[bool, str]:
         """生成图片，保存到 output_path，返回 (成功, 信息)"""
         if self.provider == "dalle":
             return self._generate_dalle(prompt, output_path)
@@ -34,6 +35,9 @@ class ImageClient:
             return self._generate_sd(prompt, output_path)
         elif self.provider == "comfyui":
             return self._generate_comfyui(prompt, output_path, reference_image, denoise)
+        elif self.provider == "kontext":
+            return self._generate_kontext(prompt, output_path,
+                                         reference_images or ([reference_image] if reference_image else []))
         else:
             return False, f"不支持的 provider: {self.provider}"
 
@@ -132,8 +136,7 @@ class ImageClient:
     def _generate_comfyui(self, prompt: str, output_path: str,
                           reference_image: str = None,
                           denoise: float = 0.6) -> tuple[bool, str]:
-        """通过 ComfyUI 工作流生成图片"""
-        # 工作流路径：项目目录下 workflows/flux_img2img_api.json
+        """通过 ComfyUI 工作流生成图片（img2img 模式）"""
         project_root = Path(__file__).parent.parent
         workflow_path = project_root / "workflows" / "flux_img2img_api.json"
         if not workflow_path.exists():
@@ -150,7 +153,6 @@ class ImageClient:
                 denoise=denoise,
             )
         else:
-            # 无参考图时，denoise=1.0 等于 txt2img
             return comfy.generate_img2img(
                 workflow_path=str(workflow_path),
                 reference_image=reference_image or "",
@@ -159,10 +161,31 @@ class ImageClient:
                 denoise=1.0,
             )
 
+    def _generate_kontext(self, prompt: str, output_path: str,
+                         reference_images: list) -> tuple[bool, str]:
+        """通过 Flux Kontext 模型生成图片（保持主体一致性）"""
+        if not reference_images:
+            return False, "Kontext 模式需要至少一张参考图"
+
+        project_root = Path(__file__).parent.parent
+        workflow_path = project_root / "workflows" / "flux_kontext_api.json"
+        if not workflow_path.exists():
+            return False, f"工作流文件不存在: {workflow_path}"
+
+        comfy = ComfyUIClient(self.base_url)
+        return comfy.generate_kontext(
+            workflow_path=str(workflow_path),
+            reference_images=reference_images,
+            prompt=prompt,
+            output_path=output_path,
+            guidance=2.5,
+            steps=30,
+        )
+
     def test_connection(self) -> tuple[bool, str]:
         """测试连接"""
         try:
-            if self.provider == "comfyui":
+            if self.provider in ("comfyui", "kontext"):
                 comfy = ComfyUIClient(self.base_url)
                 return comfy.test_connection()
             elif self.provider == "sd":
