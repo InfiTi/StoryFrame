@@ -39,6 +39,10 @@ DEFAULT_CONFIG = {
     "product": {
         "directory": "",  # 商品信息 Markdown 所在目录
     },
+    # 提示词缓存
+    "cache": {
+        "max_versions": 3,  # 每个商品保留最近 N 个版本
+    },
 }
 
 

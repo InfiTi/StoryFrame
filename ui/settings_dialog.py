@@ -148,6 +148,17 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(prod_group)
 
+        # === 缓存设置 ===
+        cache_group = QGroupBox("提示词缓存")
+        cache_form = QFormLayout(cache_group)
+
+        self.cache_max = QSpinBox()
+        self.cache_max.setRange(1, 20)
+        self.cache_max.setValue(self.config.get("cache", {}).get("max_versions", 3))
+        cache_form.addRow("每个商品保留版本数：", self.cache_max)
+
+        layout.addWidget(cache_group)
+
         # === 按钮 ===
         buttons = QDialogButtonBox(
             QDialogButtonBox.Save | QDialogButtonBox.Cancel
@@ -181,6 +192,10 @@ class SettingsDialog(QDialog):
         if "product" not in self.config:
             self.config["product"] = {}
         self.config["product"]["directory"] = self.prod_dir.text().strip()
+
+        if "cache" not in self.config:
+            self.config["cache"] = {}
+        self.config["cache"]["max_versions"] = self.cache_max.value()
 
         save_config(self.config)
         self.accept()

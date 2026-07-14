@@ -21,6 +21,7 @@ from core.llm_client import LLMClient
 from core.image_client import ImageClient
 from core.storyboard import generate_storyboard, Storyboard, StoryboardFrame
 from core.product_parser import parse_product_markdown, scan_product_directory, ProductInfo
+from core.script_cache import save_cache, list_cache, load_cache, cleanup_cache
 from core.exporter import export_json, export_markdown, export_package
 from ui.settings_dialog import SettingsDialog
 from ui.storyboard_view import StoryboardView
@@ -221,6 +222,21 @@ class MainWindow(QMainWindow):
         param_form.addRow("总时长（秒）：", self.duration_spin)
 
         left_layout.addWidget(param_group)
+
+        # 历史缓存版本
+        cache_group = QGroupBox("历史版本")
+        cache_layout = QHBoxLayout(cache_group)
+        self.cache_combo = QComboBox()
+        self.cache_combo.setStyleSheet("""
+            QComboBox { padding: 4px 8px; }
+        """)
+        self.cache_combo.addItem("-- 无缓存 --", "")
+        cache_layout.addWidget(self.cache_combo, 1)
+        self.cache_load_btn = QPushButton("加载")
+        self.cache_load_btn.setFixedWidth(50)
+        self.cache_load_btn.clicked.connect(self._load_selected_cache)
+        cache_layout.addWidget(self.cache_load_btn)
+        left_layout.addWidget(cache_group)
 
         # 操作按钮
         self.generate_script_btn = QPushButton("🎬 生成分镜脚本")
@@ -492,6 +508,8 @@ class MainWindow(QMainWindow):
             self.status_label.setText(
                 f"已选择：{info.name} | 质感关键词：{texture_cn}"
             )
+            # 刷新该商品的缓存列表
+            self._refresh_cache_combo(info.name)
         except Exception as e:
             QMessageBox.critical(self, "解析失败", f"解析商品信息失败：\n\n{e}")
 
@@ -567,6 +585,13 @@ class MainWindow(QMainWindow):
         self.current_storyboard = storyboard
         self.current_frames_data = [f.__dict__ for f in storyboard.frames]
 
+        # 保存到缓存
+        product_name = storyboard.product_name
+        max_versions = self.config.get("cache", {}).get("max_versions", 3)
+        save_cache(product_name, storyboard.to_dict(), storyboard.style_name)
+        cleanup_cache(product_name, max_versions)
+        self._refresh_cache_combo(product_name)
+
         # 更新视图
         self.storyboard_view.set_frames(self.current_frames_data)
         self.storyboard_view.frame_selected.connect(self._on_frame_selected)
@@ -578,7 +603,7 @@ class MainWindow(QMainWindow):
         self.export_md_btn.setEnabled(True)
         self.export_pkg_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
-        self.status_label.setText(f"已生成 {len(storyboard.frames)} 帧分镜脚本")
+        self.status_label.setText(f"已生成 {len(storyboard.frames)} 帧分镜脚本（已缓存）")
 
     def _on_script_error(self, error: str):
         """分镜脚本生成失败"""
@@ -586,6 +611,60 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         self.status_label.setText("生成失败")
         QMessageBox.critical(self, "错误", f"生成分镜脚本失败：\n\n{error}")
+
+    def _refresh_cache_combo(self, product_name: str):
+        """刷新历史版本下拉框"""
+        self.cache_combo.clear()
+        self.cache_combo.addItem("-- 无缓存 --", "")
+        if not product_name:
+            return
+        max_versions = self.config.get("cache", {}).get("max_versions", 3)
+        versions = list_cache(product_name, max_versions)
+        for v in versions:
+            label = f"{v['timestamp']} | {v['style_name']} | {v['frame_count']}帧"
+            self.cache_combo.addItem(label, v["file"])
+
+    def _load_selected_cache(self):
+        """加载选中的缓存版本"""
+        file_path = self.cache_combo.currentData()
+        if not file_path:
+            return
+        data = load_cache(file_path)
+        if not data:
+            QMessageBox.warning(self, "加载失败", "缓存文件已损坏或不存在")
+            return
+
+        # 重建 Storyboard 对象
+        from core.storyboard import StoryboardFrame
+        frames = []
+        for item in data.get("frames", []):
+            frames.append(StoryboardFrame(
+                frame=item.get("frame", len(frames) + 1),
+                duration=item.get("duration", 3.0),
+                image_prompt=item.get("image_prompt", ""),
+                camera_motion=item.get("camera_motion", ""),
+                motion_hint=item.get("motion_hint", ""),
+                description=item.get("description", ""),
+                image_path=item.get("image_path"),
+            ))
+
+        self.current_storyboard = Storyboard(
+            product_name=data.get("product_name", ""),
+            product_desc=data.get("product_desc", ""),
+            style_name=data.get("style_name", ""),
+            frames=frames,
+        )
+        self.current_frames_data = [f.__dict__ for f in frames]
+
+        # 更新视图
+        self.storyboard_view.set_frames(self.current_frames_data)
+        self.storyboard_view.frame_selected.connect(self._on_frame_selected)
+
+        self.generate_images_btn.setEnabled(True)
+        self.export_json_btn.setEnabled(True)
+        self.export_md_btn.setEnabled(True)
+        self.export_pkg_btn.setEnabled(True)
+        self.status_label.setText(f"已加载缓存版本：{len(frames)} 帧")
 
     def _on_frame_selected(self, index: int):
         """选中某帧"""
