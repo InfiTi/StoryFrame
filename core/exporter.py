@@ -1,4 +1,4 @@
-"""导出功能"""
+﻿"""导出功能"""
 
 import json
 import shutil
@@ -38,6 +38,11 @@ def export_markdown(storyboard: Storyboard, output_path: str):
             f"**镜头运动**：{frame.camera_motion}",
             "",
         ])
+        if frame.motion_hint:
+            lines.extend([
+                f"**画面动态**：{frame.motion_hint}",
+                "",
+            ])
         if frame.image_path:
             lines.append(f"![第{frame.frame}帧]({frame.image_path})")
             lines.append("")

@@ -19,6 +19,7 @@ from core.templates import TEMPLATES, get_template_by_name
 from core.llm_client import LLMClient
 from core.image_client import ImageClient
 from core.storyboard import generate_storyboard, Storyboard, StoryboardFrame
+from core.product_parser import parse_product_markdown, ProductInfo
 from core.exporter import export_json, export_markdown, export_package
 from ui.settings_dialog import SettingsDialog
 from ui.storyboard_view import StoryboardView
@@ -32,7 +33,8 @@ class GenerateScriptWorker(QObject):
     error = Signal(str)
 
     def __init__(self, llm_config, product_name, product_desc,
-                 selling_points, template, frame_count, total_duration):
+                 selling_points, template, frame_count, total_duration,
+                 product_info=None):
         super().__init__()
         self.llm_config = llm_config
         self.product_name = product_name
@@ -41,6 +43,7 @@ class GenerateScriptWorker(QObject):
         self.template = template
         self.frame_count = frame_count
         self.total_duration = total_duration
+        self.product_info = product_info
 
     def run(self):
         try:
@@ -57,6 +60,7 @@ class GenerateScriptWorker(QObject):
                 template=self.template,
                 frame_count=self.frame_count,
                 total_duration=self.total_duration,
+                product_info=self.product_info,
             )
             llm.close()
             self.finished.emit(sb)
@@ -106,6 +110,7 @@ class MainWindow(QMainWindow):
         self.config = load_config()
         self.current_storyboard: Storyboard | None = None
         self.current_frames_data: list = []
+        self.product_info: ProductInfo | None = None
 
         # Worker 管理
         self.script_thread = None
@@ -133,6 +138,13 @@ class MainWindow(QMainWindow):
         # 产品输入
         product_group = QGroupBox("产品输入")
         product_form = QFormLayout(product_group)
+
+        # 导入按钮
+        import_layout = QHBoxLayout()
+        self.import_btn = QPushButton("📂 导入商品信息 (Markdown)")
+        self.import_btn.clicked.connect(self._import_product_info)
+        import_layout.addWidget(self.import_btn)
+        product_form.addRow("", import_layout)
 
         self.product_name_input = QLineEdit()
         self.product_name_input.setPlaceholderText("如：芒果干")
@@ -268,6 +280,13 @@ class MainWindow(QMainWindow):
         self.camera_motion_edit.setReadOnly(True)
         self.camera_motion_edit.setMaximumHeight(60)
         detail_layout.addWidget(self.camera_motion_edit)
+
+        # 画面动态提示
+        detail_layout.addWidget(QLabel("画面动态（产品怎么动）："))
+        self.motion_hint_edit = QTextEdit()
+        self.motion_hint_edit.setReadOnly(True)
+        self.motion_hint_edit.setMaximumHeight(60)
+        detail_layout.addWidget(self.motion_hint_edit)
 
         # 单帧生成图片按钮
         self.generate_single_btn = QPushButton("🖼️ 生成此帧图片")
@@ -406,6 +425,35 @@ class MainWindow(QMainWindow):
         )
         self.frame_count_spin.setValue(template.recommended_frames)
 
+    def _import_product_info(self):
+        """导入商品信息 Markdown 文件"""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择商品信息文件", "", "Markdown 文件 (*.md)"
+        )
+        if not path:
+            return
+
+        try:
+            info = parse_product_markdown(path)
+            self.product_info = info
+
+            # 填充输入框
+            self.product_name_input.setText(info.name)
+            self.product_desc_input.setPlainText(info.description)
+
+            # 卖点用换行分隔
+            points_text = "\n".join(info.selling_points)
+            self.selling_points_input.setPlainText(points_text)
+
+            # 状态提示
+            texture_cn = "、".join(info.texture_keywords[:8]) if info.texture_keywords else "未检测到"
+            self.status_label.setText(
+                f"已导入：{info.name} | 质感关键词：{texture_cn}"
+            )
+
+        except Exception as e:
+            QMessageBox.critical(self, "导入失败", f"解析商品信息失败：\n\n{e}")
+
     def _open_settings(self):
         """打开设置"""
         dlg = SettingsDialog(self)
@@ -450,6 +498,7 @@ class MainWindow(QMainWindow):
             template=template,
             frame_count=frame_count,
             total_duration=total_duration,
+            product_info=self.product_info,
         )
         self.script_worker.moveToThread(self.script_thread)
         self.script_thread.started.connect(self.script_worker.run)
@@ -490,6 +539,7 @@ class MainWindow(QMainWindow):
             frame = self.current_frames_data[index]
             self.image_prompt_edit.setText(frame.get("image_prompt", ""))
             self.camera_motion_edit.setText(frame.get("camera_motion", ""))
+            self.motion_hint_edit.setText(frame.get("motion_hint", ""))
             self.generate_single_btn.setEnabled(True)
             self.storyboard_view.selected_index = index
 
