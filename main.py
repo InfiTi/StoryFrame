@@ -18,7 +18,7 @@ def create_splash():
     splash = QSplashScreen()
     splash.setStyleSheet("""
         QSplashScreen {
-            background: #2c3e50;
+            background: #1e1e2e;
         }
     """)
     # 绘制文字

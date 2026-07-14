@@ -34,7 +34,7 @@ class FrameCard(QFrame):
 
         # 帧序号
         header = QLabel(f"第 {self.frame_data.get('frame', self.index + 1)} 帧")
-        header.setStyleSheet("font-weight: bold; font-size: 13px;")
+        header.setStyleSheet("font-weight: bold; font-size: 13px; color: #cdd6f4;")
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
 
@@ -42,16 +42,14 @@ class FrameCard(QFrame):
         duration = self.frame_data.get("duration", 0)
         dur_label = QLabel(f"{duration:.1f}s")
         dur_label.setAlignment(Qt.AlignCenter)
-        dur_label.setStyleSheet("color: #666; font-size: 11px;")
+        dur_label.setStyleSheet("color: #a6adc8; font-size: 11px;")
         layout.addWidget(dur_label)
 
         # 图片预览
         self.image_label = QLabel()
         self.image_label.setFixedSize(160, 160)
         self.image_label.setAlignment(Qt.AlignCenter)
-        self.image_label.setStyleSheet("background: #f0f0f0; border-radius: 4px;")
-        self.image_label.setText("暂无图片")
-        self.image_label.setStyleSheet("background: #f0f0f0; border-radius: 4px; color: #999; font-size: 12px;")
+        self.image_label.setStyleSheet("background: #11111b; border-radius: 4px; color: #585b70; font-size: 12px;")
 
         img_path = self.frame_data.get("image_path")
         if img_path and Path(img_path).exists():
@@ -67,15 +65,15 @@ class FrameCard(QFrame):
         desc = self.frame_data.get("description", "")
         desc_label = QLabel(desc)
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("font-size: 11px; color: #333;")
+        desc_label.setStyleSheet("font-size: 11px; color: #a6adc8;")
         desc_label.setMaximumHeight(50)
         layout.addWidget(desc_label)
 
     def _update_style(self):
         if self.selected:
-            self.setStyleSheet("FrameCard { border: 2px solid #4a90d9; border-radius: 6px; background: #f5faff; }")
+            self.setStyleSheet("FrameCard { border: 2px solid #89b4fa; border-radius: 6px; background: #1e1e2e; }")
         else:
-            self.setStyleSheet("FrameCard { border: 2px solid #ddd; border-radius: 6px; background: white; }")
+            self.setStyleSheet("FrameCard { border: 2px solid #45475a; border-radius: 6px; background: #181825; }")
 
     def set_selected(self, selected: bool):
         self.selected = selected
@@ -113,7 +111,7 @@ class StoryboardView(QWidget):
 
         # 标题
         title = QLabel("分镜时间轴")
-        title.setStyleSheet("font-size: 14px; font-weight: bold; padding: 4px;")
+        title.setStyleSheet("font-size: 14px; font-weight: bold; padding: 4px; color: #cdd6f4;")
         layout.addWidget(title)
 
         # 滚动区域
@@ -130,7 +128,7 @@ class StoryboardView(QWidget):
 
         # 空状态提示
         self.empty_label = QLabel("点击「生成分镜」开始创建分镜脚本")
-        self.empty_label.setStyleSheet("color: #999; font-size: 14px; padding: 40px;")
+        self.empty_label.setStyleSheet("color: #585b70; font-size: 14px; padding: 40px;")
         self.empty_label.setAlignment(Qt.AlignCenter)
         self.timeline_layout.addWidget(self.empty_label)
 

@@ -161,7 +161,7 @@ class MainWindow(QMainWindow):
 
         self.style_desc_label = QLabel()
         self.style_desc_label.setWordWrap(True)
-        self.style_desc_label.setStyleSheet("color: #666; font-size: 12px; padding: 4px;")
+        self.style_desc_label.setStyleSheet("color: #a6adc8; font-size: 12px; padding: 4px;")
         style_layout.addWidget(self.style_desc_label)
 
         self.style_combo.currentIndexChanged.connect(self._on_style_changed)
@@ -187,9 +187,9 @@ class MainWindow(QMainWindow):
         self.generate_script_btn = QPushButton("🎬 生成分镜脚本")
         self.generate_script_btn.setMinimumHeight(40)
         self.generate_script_btn.setStyleSheet(
-            "QPushButton { background: #4a90d9; color: white; font-size: 14px; font-weight: bold; border-radius: 6px; }"
-            "QPushButton:hover { background: #357abd; }"
-            "QPushButton:disabled { background: #ccc; }"
+            "QPushButton { background: #89b4fa; color: #11111b; font-size: 14px; font-weight: bold; border-radius: 6px; border: none; }"
+            "QPushButton:hover { background: #b4befe; }"
+            "QPushButton:disabled { background: #313244; color: #585b70; }"
         )
         self.generate_script_btn.clicked.connect(self._generate_script)
         left_layout.addWidget(self.generate_script_btn)
@@ -198,9 +198,9 @@ class MainWindow(QMainWindow):
         self.generate_images_btn.setMinimumHeight(36)
         self.generate_images_btn.setEnabled(False)
         self.generate_images_btn.setStyleSheet(
-            "QPushButton { background: #27ae60; color: white; font-size: 13px; border-radius: 6px; }"
-            "QPushButton:hover { background: #229954; }"
-            "QPushButton:disabled { background: #ccc; }"
+            "QPushButton { background: #a6e3a1; color: #11111b; font-size: 13px; border-radius: 6px; border: none; }"
+            "QPushButton:hover { background: #94e2d5; }"
+            "QPushButton:disabled { background: #313244; color: #585b70; }"
         )
         self.generate_images_btn.clicked.connect(self._generate_all_images)
         left_layout.addWidget(self.generate_images_btn)
@@ -231,7 +231,7 @@ class MainWindow(QMainWindow):
 
         # 状态标签
         self.status_label = QLabel("就绪")
-        self.status_label.setStyleSheet("color: #666; font-size: 12px;")
+        self.status_label.setStyleSheet("color: #a6adc8; font-size: 12px;")
         left_layout.addWidget(self.status_label)
 
         left_layout.addStretch()
@@ -285,28 +285,115 @@ class MainWindow(QMainWindow):
         self._on_style_changed(0)
 
     def _apply_style(self):
-        """应用全局样式"""
+        """应用全局样式 - 深色主题"""
         self.setStyleSheet("""
-            QMainWindow { background: #f5f5f5; }
+            QMainWindow, QWidget {
+                background: #1e1e2e;
+                color: #cdd6f4;
+                font-size: 13px;
+            }
             QGroupBox {
                 font-weight: bold;
-                border: 1px solid #ddd;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
                 border-radius: 6px;
-                margin-top: 8px;
-                padding-top: 12px;
+                margin-top: 10px;
+                padding-top: 14px;
+                background: #181825;
             }
             QGroupBox::title {
                 left: 10px;
-                padding: 0 4px;
+                padding: 0 6px;
+                color: #89b4fa;
+            }
+            QLabel {
+                color: #cdd6f4;
             }
             QPushButton {
-                padding: 6px 12px;
+                padding: 6px 14px;
                 border-radius: 4px;
+                background: #313244;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+            }
+            QPushButton:hover {
+                background: #45475a;
+            }
+            QPushButton:pressed {
+                background: #585b70;
+            }
+            QPushButton:disabled {
+                background: #181825;
+                color: #585b70;
+                border: 1px solid #313244;
             }
             QLineEdit, QTextEdit, QComboBox, QSpinBox {
-                padding: 4px 6px;
-                border: 1px solid #ccc;
+                padding: 5px 8px;
+                border: 1px solid #45475a;
                 border-radius: 4px;
+                background: #11111b;
+                color: #cdd6f4;
+            }
+            QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus {
+                border: 1px solid #89b4fa;
+            }
+            QTextEdit {
+                background: #11111b;
+                color: #cdd6f4;
+            }
+            QComboBox QAbstractItemView {
+                background: #1e1e2e;
+                color: #cdd6f4;
+                selection-background-color: #313244;
+                border: 1px solid #45475a;
+            }
+            QProgressBar {
+                border: 1px solid #45475a;
+                border-radius: 4px;
+                text-align: center;
+                color: #cdd6f4;
+                background: #11111b;
+            }
+            QProgressBar::chunk {
+                background: #89b4fa;
+                border-radius: 3px;
+            }
+            QScrollArea {
+                border: 1px solid #45475a;
+                background: #181825;
+            }
+            QScrollBar:horizontal {
+                background: #181825;
+                height: 12px;
+                border: none;
+            }
+            QScrollBar::handle:horizontal {
+                background: #45475a;
+                border-radius: 4px;
+                min-width: 30px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background: #585b70;
+            }
+            QScrollBar:vertical {
+                background: #181825;
+                width: 12px;
+                border: none;
+            }
+            QScrollBar::handle:vertical {
+                background: #45475a;
+                border-radius: 4px;
+                min-height: 30px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #585b70;
+            }
+            QScrollBar::add-line, QScrollBar::sub-line {
+                border: none;
+                background: none;
+            }
+            QFrame {
+                color: #cdd6f4;
             }
         """)
 

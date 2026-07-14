@@ -18,6 +18,51 @@ class SettingsDialog(QDialog):
         self.setMinimumWidth(500)
         self.config = load_config()
         self._init_ui()
+        self._apply_style()
+
+    def _apply_style(self):
+        self.setStyleSheet("""
+            QDialog { background: #1e1e2e; color: #cdd6f4; }
+            QGroupBox {
+                font-weight: bold;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding-top: 14px;
+                background: #181825;
+            }
+            QGroupBox::title {
+                left: 10px;
+                padding: 0 6px;
+                color: #89b4fa;
+            }
+            QLabel { color: #cdd6f4; }
+            QPushButton {
+                padding: 6px 14px;
+                border-radius: 4px;
+                background: #313244;
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+            }
+            QPushButton:hover { background: #45475a; }
+            QLineEdit, QComboBox, QSpinBox {
+                padding: 5px 8px;
+                border: 1px solid #45475a;
+                border-radius: 4px;
+                background: #11111b;
+                color: #cdd6f4;
+            }
+            QLineEdit:focus, QComboBox:focus, QSpinBox:focus {
+                border: 1px solid #89b4fa;
+            }
+            QComboBox QAbstractItemView {
+                background: #1e1e2e;
+                color: #cdd6f4;
+                selection-background-color: #313244;
+                border: 1px solid #45475a;
+            }
+        """)
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
