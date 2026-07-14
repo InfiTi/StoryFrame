@@ -5,10 +5,20 @@
       "image": "reference.png"
     }
   },
+  "1b": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": ["1", 0],
+      "upscale_method": "lanczos",
+      "width": 1024,
+      "height": 1024,
+      "crop": "center"
+    }
+  },
   "2": {
     "class_type": "VAEEncode",
     "inputs": {
-      "pixels": ["1", 0],
+      "pixels": ["1b", 0],
       "vae": ["10", 0]
     }
   },
@@ -32,14 +42,6 @@
       "guidance": 3.5
     }
   },
-  "6": {
-    "class_type": "EmptyLatentImage",
-    "inputs": {
-      "width": 1024,
-      "height": 1024,
-      "batch_size": 1
-    }
-  },
   "7": {
     "class_type": "KSampler",
     "inputs": {
@@ -52,15 +54,7 @@
       "model": ["3", 0],
       "positive": ["5", 0],
       "negative": ["5", 0],
-      "latent_image": ["9", 0]
-    }
-  },
-  "9": {
-    "class_type": "LatentBlend",
-    "inputs": {
-      "samples1": ["6", 0],
-      "samples2": ["2", 0],
-      "alpha": 0.4
+      "latent_image": ["2", 0]
     }
   },
   "10": {

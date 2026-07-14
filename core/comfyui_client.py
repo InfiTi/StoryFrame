@@ -11,6 +11,7 @@ import urllib.error
 import urllib.parse
 from pathlib import Path
 from typing import Optional
+import httpx
 
 
 class ComfyUIClient:
@@ -62,28 +63,15 @@ class ComfyUIClient:
         if not path.exists():
             raise FileNotFoundError(f"图片不存在: {image_path}")
 
-        url = f"{self.base_url}/upload/image"
-        filename = path.name
-
-        # 用 multipart/form-data 上传
-        boundary = "----StoryFrameBoundary"
         with open(path, "rb") as f:
-            file_data = f.read()
-
-        body = (
-            f"--{boundary}\r\n"
-            f'Content-Disposition: form-data; name="image"; filename="{filename}"\r\n'
-            f"Content-Type: image/jpeg\r\n\r\n"
-        ).encode("utf-8") + file_data + f"\r\n--{boundary}\r\n".encode("utf-8")
-
-        req = urllib.request.Request(
-            url,
-            data=body,
-            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-        )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-            return result.get("name", filename)
+            resp = httpx.post(
+                f"{self.base_url}/upload/image",
+                files={"image": (path.name, f, "image/jpeg")},
+                timeout=60,
+            )
+            resp.raise_for_status()
+            result = resp.json()
+            return result.get("name", path.name)
 
     def queue_prompt(self, workflow: dict) -> str:
         """提交工作流到队列，返回 prompt_id"""
@@ -108,14 +96,13 @@ class ComfyUIClient:
 
     def download_image(self, filename: str, subfolder: str, output_path: str):
         """下载生成的图片"""
-        url = f"{self.base_url}/view?filename={urllib.parse.quote(filename)}"
+        params = {"filename": filename}
         if subfolder:
-            url += f"&subfolder={urllib.parse.quote(subfolder)}"
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = resp.read()
+            params["subfolder"] = subfolder
+        resp = httpx.get(f"{self.base_url}/view", params=params, timeout=60)
+        resp.raise_for_status()
         with open(output_path, "wb") as f:
-            f.write(data)
+            f.write(resp.content)
 
     def generate_img2img(
         self,
