@@ -33,6 +33,20 @@ def create_splash():
 
 
 def main():
+    import traceback
+    import faulthandler
+
+    # 启用 faulthandler 捕获段错误
+    faulthandler.enable()
+
+    def exception_hook(exc_type, exc_value, exc_tb):
+        traceback.print_exception(exc_type, exc_value, exc_tb)
+        from PySide6.QtWidgets import QMessageBox
+        msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        QMessageBox.critical(None, "未处理异常", msg)
+
+    sys.excepthook = exception_hook
+
     app = QApplication(sys.argv)
     app.setApplicationName("StoryFrame")
 

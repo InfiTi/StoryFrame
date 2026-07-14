@@ -112,6 +112,8 @@ class GenerateImageWorker(QObject):
             else:
                 self.error.emit(self.frame_index, msg)
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             self.error.emit(self.frame_index, str(e))
 
 
