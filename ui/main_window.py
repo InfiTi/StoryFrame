@@ -133,6 +133,12 @@ class MainWindow(QMainWindow):
         self.script_worker = None
         self.image_threads = []
         self.image_workers = []
+        self._current_image_thread = None
+        self._current_image_worker = None
+        self._image_queue = []
+        self._image_project_dir = None
+        self._image_reference = None
+        self._image_denoise = 0.6
 
         self._init_ui()
         self._apply_style()
@@ -814,29 +820,48 @@ class MainWindow(QMainWindow):
         self._image_total = len(indices)
         self._image_done = 0
         self._image_errors = []
+        self._image_queue = list(indices)  # 待生成队列
+        self._image_project_dir = project_dir
+        self._image_reference = reference_image
+        self._image_denoise = denoise
 
-        for i, idx in enumerate(indices):
-            frame = self.current_storyboard.frames[idx]
-            output_path = str(project_dir / f"frame_{frame.frame}.png")
+        # 串行生成第一帧
+        self._generate_next_image()
 
-            thread = QThread()
-            worker = GenerateImageWorker(
-                image_config=self.config["image"],
-                frame_index=idx,
-                prompt=frame.image_prompt,
-                output_path=output_path,
-                reference_image=reference_image,
-                denoise=denoise,
-            )
-            worker.moveToThread(thread)
-            thread.started.connect(worker.run)
-            worker.finished.connect(self._on_image_finished)
-            worker.error.connect(self._on_image_error)
-            worker.finished.connect(thread.quit)
-            worker.error.connect(thread.quit)
-            self.image_threads.append(thread)
-            self.image_workers.append(worker)
-            thread.start()
+    def _generate_next_image(self):
+        """串行生成下一帧图片"""
+        if not self._image_queue:
+            self._finish_image_generation()
+            return
+
+        idx = self._image_queue.pop(0)
+        frame = self.current_storyboard.frames[idx]
+        output_path = str(self._image_project_dir / f"frame_{frame.frame}.png")
+
+        self.status_label.setText(
+            f"正在生成第 {idx + 1}/{self._image_total} 帧..."
+        )
+
+        thread = QThread()
+        worker = GenerateImageWorker(
+            image_config=self.config["image"],
+            frame_index=idx,
+            prompt=frame.image_prompt,
+            output_path=output_path,
+            reference_image=self._image_reference,
+            denoise=self._image_denoise,
+        )
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_image_finished)
+        worker.error.connect(self._on_image_error)
+        worker.finished.connect(thread.quit)
+        worker.error.connect(thread.quit)
+        thread.finished.connect(self._on_thread_cleanup)
+        # 存引用防止被GC
+        self._current_image_thread = thread
+        self._current_image_worker = worker
+        thread.start()
 
     def _select_reference_image(self):
         """选择商品参考图"""
@@ -910,6 +935,13 @@ class MainWindow(QMainWindow):
             return list_widget.currentItem().text()
         return None
 
+    def _on_thread_cleanup(self):
+        """线程结束后清理并生成下一帧"""
+        self._current_image_thread = None
+        self._current_image_worker = None
+        if self._image_queue:
+            self._generate_next_image()
+
     def _on_image_finished(self, frame_index: int, image_path: str):
         """单帧图片生成完成"""
         self._image_done += 1
@@ -949,10 +981,6 @@ class MainWindow(QMainWindow):
             )
         else:
             self.status_label.setText(f"全部 {self._image_total} 张图片生成完成")
-
-        # 清理线程
-        self.image_threads.clear()
-        self.image_workers.clear()
 
     def _export_json(self):
         """导出 JSON"""
