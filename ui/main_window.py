@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QTextEdit, QPushButton, QComboBox, QSpinBox,
     QGroupBox, QFormLayout, QMessageBox, QFileDialog,
     QProgressBar, QSplitter, QScrollArea, QFrame,
-    QListWidget, QListWidgetItem,
+    QListWidget, QListWidgetItem, QApplication,
 )
 from PySide6.QtCore import Qt, QThread, Signal, QObject
 from PySide6.QtGui import QFont, QPixmap
@@ -311,21 +311,63 @@ class MainWindow(QMainWindow):
         detail_layout = QVBoxLayout(detail_group)
 
         # 图片提示词
-        detail_layout.addWidget(QLabel("图片提示词（用于 AI 生图）："))
+        prompt_header = QHBoxLayout()
+        prompt_header.addWidget(QLabel("图片提示词（用于 AI 生图）："))
+        prompt_header.addStretch()
+        self.copy_prompt_btn = QPushButton("📋 复制全部")
+        self.copy_prompt_btn.setFixedHeight(24)
+        self.copy_prompt_btn.setStyleSheet(
+            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 8px; }"
+            "QPushButton:hover { background: #45475a; }"
+            "QPushButton:disabled { background: #181825; color: #585b70; }"
+        )
+        self.copy_prompt_btn.setEnabled(False)
+        self.copy_prompt_btn.clicked.connect(self._copy_all_prompts)
+        prompt_header.addWidget(self.copy_prompt_btn)
+        detail_layout.addLayout(prompt_header)
+
         self.image_prompt_edit = QTextEdit()
         self.image_prompt_edit.setReadOnly(True)
         self.image_prompt_edit.setMaximumHeight(80)
         detail_layout.addWidget(self.image_prompt_edit)
 
         # 镜头运动
-        detail_layout.addWidget(QLabel("镜头运动（用于图生视频）："))
+        motion_header = QHBoxLayout()
+        motion_header.addWidget(QLabel("镜头运动（用于图生视频）："))
+        motion_header.addStretch()
+        self.copy_motion_btn = QPushButton("📋 复制全部")
+        self.copy_motion_btn.setFixedHeight(24)
+        self.copy_motion_btn.setStyleSheet(
+            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 8px; }"
+            "QPushButton:hover { background: #45475a; }"
+            "QPushButton:disabled { background: #181825; color: #585b70; }"
+        )
+        self.copy_motion_btn.setEnabled(False)
+        self.copy_motion_btn.clicked.connect(self._copy_all_motions)
+        motion_header.addWidget(self.copy_motion_btn)
+        detail_layout.addLayout(motion_header)
+
         self.camera_motion_edit = QTextEdit()
         self.camera_motion_edit.setReadOnly(True)
         self.camera_motion_edit.setMaximumHeight(60)
         detail_layout.addWidget(self.camera_motion_edit)
 
         # 画面动态提示
-        detail_layout.addWidget(QLabel("画面动态（产品怎么动）："))
+        hint_header = QHBoxLayout()
+        hint_header.addWidget(QLabel("画面动态（产品怎么动）："))
+        hint_header.addStretch()
+        self.copy_hint_btn = QPushButton("📋 复制全部")
+        self.copy_hint_btn.setFixedHeight(24)
+        self.copy_hint_btn.setStyleSheet(
+            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 8px; }"
+            "QPushButton:hover { background: #45475a; }"
+            "QPushButton:disabled { background: #181825; color: #585b70; }"
+        )
+        self.copy_hint_btn.setEnabled(False)
+        self.copy_hint_btn.clicked.connect(self._copy_all_hints)
+        hint_header.addWidget(self.copy_hint_btn)
+        detail_layout.addLayout(hint_header)
+
         self.motion_hint_edit = QTextEdit()
         self.motion_hint_edit.setReadOnly(True)
         self.motion_hint_edit.setMaximumHeight(60)
@@ -602,6 +644,9 @@ class MainWindow(QMainWindow):
         self.export_json_btn.setEnabled(True)
         self.export_md_btn.setEnabled(True)
         self.export_pkg_btn.setEnabled(True)
+        self.copy_prompt_btn.setEnabled(True)
+        self.copy_motion_btn.setEnabled(True)
+        self.copy_hint_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.status_label.setText(f"已生成 {len(storyboard.frames)} 帧分镜脚本（已缓存）")
 
@@ -664,6 +709,9 @@ class MainWindow(QMainWindow):
         self.export_json_btn.setEnabled(True)
         self.export_md_btn.setEnabled(True)
         self.export_pkg_btn.setEnabled(True)
+        self.copy_prompt_btn.setEnabled(True)
+        self.copy_motion_btn.setEnabled(True)
+        self.copy_hint_btn.setEnabled(True)
         self.status_label.setText(f"已加载缓存版本：{len(frames)} 帧")
 
     def _on_frame_selected(self, index: int):
@@ -675,6 +723,39 @@ class MainWindow(QMainWindow):
             self.motion_hint_edit.setText(frame.get("motion_hint", ""))
             self.generate_single_btn.setEnabled(True)
             self.storyboard_view.selected_index = index
+
+    def _copy_all_prompts(self):
+        """复制所有帧的图片提示词"""
+        if not self.current_frames_data:
+            return
+        lines = []
+        for f in self.current_frames_data:
+            lines.append(f"[Frame {f.get('frame', '?')}]\n{f.get('image_prompt', '')}")
+        text = "\n\n".join(lines)
+        QApplication.clipboard().setText(text)
+        self.status_label.setText(f"已复制 {len(self.current_frames_data)} 帧图片提示词")
+
+    def _copy_all_motions(self):
+        """复制所有帧的镜头运动"""
+        if not self.current_frames_data:
+            return
+        lines = []
+        for f in self.current_frames_data:
+            lines.append(f"[Frame {f.get('frame', '?')}] {f.get('camera_motion', '')}")
+        text = "\n".join(lines)
+        QApplication.clipboard().setText(text)
+        self.status_label.setText(f"已复制 {len(self.current_frames_data)} 帧镜头运动")
+
+    def _copy_all_hints(self):
+        """复制所有帧的画面动态"""
+        if not self.current_frames_data:
+            return
+        lines = []
+        for f in self.current_frames_data:
+            lines.append(f"[Frame {f.get('frame', '?')}] {f.get('motion_hint', '')}")
+        text = "\n".join(lines)
+        QApplication.clipboard().setText(text)
+        self.status_label.setText(f"已复制 {len(self.current_frames_data)} 帧画面动态")
 
     def _generate_single_image(self):
         """生成选中帧的图片"""
