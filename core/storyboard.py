@@ -1,6 +1,9 @@
 """分镜脚本生成核心逻辑"""
 
 import json
+import os
+from pathlib import Path
+from datetime import datetime
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional
 from .templates import StyleTemplate
@@ -132,6 +135,14 @@ def generate_storyboard(
     ]
 
     result = llm.chat_json(messages, temperature=0.8)
+
+    # 保存原始响到调试文件
+    debug_dir = Path("outputs") / "_debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    debug_file = debug_dir / f"llm_response_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    # chat_json 内部已经解析了，但我们也存一下解析后的结果
+    with open(debug_file, "w", encoding="utf-8") as f:
+        f.write(json.dumps(result, ensure_ascii=False, indent=2))
 
     frames = []
     for item in result:
