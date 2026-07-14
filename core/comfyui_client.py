@@ -110,7 +110,7 @@ class ComfyUIClient:
         reference_image: str,
         prompt: str,
         output_path: str,
-        denoise: float = 0.6,
+        denoise: float = 0.4,
         seed: int = -1,
         width: int = 1024,
         height: int = 1024,
@@ -153,10 +153,13 @@ class ComfyUIClient:
                     pass
 
                 elif cls == "CLIPTextEncode":
-                    # 第一个 CLIPTextEncode 是正面提示词，第二个是负面
-                    if inputs.get("text", "") == "":
-                        inputs["text"] = prompt
-                    # 负面提示词保持不变
+                    # 所有空的 CLIPTextEncode 都填入提示词
+                    old_text = inputs.get("text", "")
+                    if old_text == "":
+                        # 自动追加禁止文字约束
+                        full_prompt = f"{prompt}, no text, no words, no letters, no logo, no watermark, no label"
+                        inputs["text"] = full_prompt
+                    # 非空的保持不变（可能是有意义的负面提示词）
 
                 elif cls == "KSampler":
                     inputs["seed"] = actual_seed

@@ -123,7 +123,7 @@ class SettingsDialog(QDialog):
         self.img_denoise = QDoubleSpinBox()
         self.img_denoise.setRange(0.1, 1.0)
         self.img_denoise.setSingleStep(0.05)
-        self.img_denoise.setValue(self.config.get("image", {}).get("denoise", 0.6))
+        self.img_denoise.setValue(self.config.get("image", {}).get("denoise", 0.4))
         img_form.addRow("去噪强度（图生图）：", self.img_denoise)
 
         layout.addWidget(img_group)
