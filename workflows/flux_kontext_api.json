@@ -21,8 +21,8 @@
   "4": {
     "class_type": "UNETLoader",
     "inputs": {
-      "unet_name": "FLUX1_QUANT\\flux1-kontext-dev-svdq-int4-r32.safetensors",
-      "weight_dtype": "default"
+      "unet_name": "FLUX1\\flux1-kontext-dev-standard.safetensors",
+      "weight_dtype": "fp8_e4m3fn"
     }
   },
   "5": {
