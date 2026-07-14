@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QProgressBar, QSplitter, QScrollArea, QFrame,
     QListWidget, QListWidgetItem, QApplication,
 )
-from PySide6.QtCore import Qt, QThread, Signal, QObject
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QSize
 from PySide6.QtGui import QFont, QPixmap
 
 from config import load_config, save_config, OUTPUT_DIR
@@ -81,12 +81,15 @@ class GenerateImageWorker(QObject):
     finished = Signal(int, str)  # frame_index, image_path
     error = Signal(int, str)     # frame_index, error_msg
 
-    def __init__(self, image_config, frame_index, prompt, output_path):
+    def __init__(self, image_config, frame_index, prompt, output_path,
+                 reference_image=None, denoise=0.6):
         super().__init__()
         self.image_config = image_config
         self.frame_index = frame_index
         self.prompt = prompt
         self.output_path = output_path
+        self.reference_image = reference_image
+        self.denoise = denoise
 
     def run(self):
         try:
@@ -98,7 +101,11 @@ class GenerateImageWorker(QObject):
                 size=self.image_config["size"],
                 quality=self.image_config["quality"],
             )
-            ok, msg = client.generate(self.prompt, self.output_path)
+            ok, msg = client.generate(
+                self.prompt, self.output_path,
+                reference_image=self.reference_image,
+                denoise=self.denoise,
+            )
             client.close()
             if ok:
                 self.finished.emit(self.frame_index, self.output_path)
@@ -119,6 +126,7 @@ class MainWindow(QMainWindow):
         self.current_storyboard: Storyboard | None = None
         self.current_frames_data: list = []
         self.product_info: ProductInfo | None = None
+        self.current_product_folder: str = ""
 
         # Worker 管理
         self.script_thread = None
@@ -537,6 +545,10 @@ class MainWindow(QMainWindow):
             info = parse_product_markdown(md_path)
             self.product_info = info
 
+            # 记录商品文件夹路径（用于查找参考图）
+            from pathlib import Path
+            self.current_product_folder = str(Path(md_path).parent)
+
             # 填充输入框
             self.product_name_input.setText(info.name)
             self.product_desc_input.setPlainText(info.description)
@@ -777,6 +789,16 @@ class MainWindow(QMainWindow):
         if not self.current_storyboard:
             return
 
+        # 如果是 ComfyUI 或 SD provider，让用户选参考图
+        provider = self.config["image"].get("provider", "")
+        reference_image = None
+        denoise = self.config["image"].get("denoise", 0.6)
+
+        if provider in ("comfyui", "sd"):
+            reference_image = self._select_reference_image()
+            if reference_image is None:
+                return  # 用户取消
+
         # 创建输出目录
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         project_dir = OUTPUT_DIR / f"{self.current_storyboard.product_name}_{timestamp}"
@@ -803,6 +825,8 @@ class MainWindow(QMainWindow):
                 frame_index=idx,
                 prompt=frame.image_prompt,
                 output_path=output_path,
+                reference_image=reference_image,
+                denoise=denoise,
             )
             worker.moveToThread(thread)
             thread.started.connect(worker.run)
@@ -813,6 +837,78 @@ class MainWindow(QMainWindow):
             self.image_threads.append(thread)
             self.image_workers.append(worker)
             thread.start()
+
+    def _select_reference_image(self):
+        """选择商品参考图"""
+        # 优先从商品目录中找图片
+        product_folder = None
+        if hasattr(self, 'current_product_folder') and self.current_product_folder:
+            product_folder = Path(self.current_product_folder)
+        elif self.product_info and self.product_info.raw_text:
+            # 尝试从缓存的商品路径找
+            pass
+
+        # 扫描商品目录下的图片
+        image_files = []
+        if product_folder and product_folder.exists():
+            for sub in ["原始图", "处理图", ""]:
+                search_dir = product_folder / sub if sub else product_folder
+                if search_dir.exists():
+                    for ext in ["*.jpg", "*.jpeg", "*.png", "*.webp"]:
+                        image_files.extend(sorted(search_dir.glob(ext)))
+
+        if not image_files:
+            # 没找到图片，让用户手动选
+            path, _ = QFileDialog.getOpenFileName(
+                self, "选择商品参考图",
+                "",
+                "图片文件 (*.jpg *.jpeg *.png *.webp)"
+            )
+            return path if path else None
+
+        # 弹出选择对话框
+        from PySide6.QtWidgets import QDialog, QListWidget, QListWidgetItem, QVBoxLayout, QLabel, QPushButton, QHBoxLayout as QHL
+        from PySide6.QtGui import QPixmap, QIcon
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("选择商品参考图")
+        dialog.setMinimumSize(500, 400)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(f"找到 {len(image_files)} 张图片，选择一张作为参考："))
+
+        list_widget = QListWidget()
+        list_widget.setIconSize(QSize(80, 80))
+        for img_path in image_files[:30]:  # 最多显示30张
+            item = QListWidgetItem(str(img_path))
+            pixmap = QPixmap(str(img_path))
+            if not pixmap.isNull():
+                item.setIcon(QIcon(pixmap.scaled(80, 80, Qt.KeepAspectRatio)))
+            list_widget.addItem(item)
+        layout.addWidget(list_widget)
+
+        # 也允许手动选
+        btn_layout = QHL()
+        manual_btn = QPushButton("手动选择...")
+        manual_btn.clicked.connect(lambda: (
+            dialog.done(2) if QFileDialog.getOpenFileName(
+                self, "选择商品参考图", "", "图片文件 (*.jpg *.jpeg *.png *.webp)"
+            )[0] else None
+        ))
+        btn_layout.addWidget(manual_btn)
+        btn_layout.addStretch()
+
+        ok_btn = QPushButton("确定")
+        ok_btn.clicked.connect(dialog.accept)
+        btn_layout.addWidget(ok_btn)
+        cancel_btn = QPushButton("取消")
+        cancel_btn.clicked.connect(dialog.reject)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+
+        result = dialog.exec()
+        if result == QDialog.Accepted and list_widget.currentItem():
+            return list_widget.currentItem().text()
+        return None
 
     def _on_image_finished(self, frame_index: int, image_path: str):
         """单帧图片生成完成"""

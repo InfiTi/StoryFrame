@@ -5,6 +5,7 @@ import httpx
 import os
 from pathlib import Path
 from typing import Optional
+from .comfyui_client import ComfyUIClient
 
 
 class ImageClient:
@@ -18,16 +19,21 @@ class ImageClient:
         self.model = model
         self.size = size
         self.quality = quality
-        self.client = httpx.Client(timeout=120.0)
+        self.client = httpx.Client(timeout=300.0)
 
-    def generate(self, prompt: str, output_path: str) -> tuple[bool, str]:
+    def generate(self, prompt: str, output_path: str,
+                 reference_image: str = None, denoise: float = 0.6) -> tuple[bool, str]:
         """生成图片，保存到 output_path，返回 (成功, 信息)"""
         if self.provider == "dalle":
             return self._generate_dalle(prompt, output_path)
         elif self.provider == "flux":
-            return self._generate_flux(prompt, output_path)
+            return self._generate_dalle(prompt, output_path)
         elif self.provider == "sd":
+            if reference_image:
+                return self._generate_sd_img2img(prompt, reference_image, output_path, denoise)
             return self._generate_sd(prompt, output_path)
+        elif self.provider == "comfyui":
+            return self._generate_comfyui(prompt, output_path, reference_image, denoise)
         else:
             return False, f"不支持的 provider: {self.provider}"
 
@@ -90,10 +96,76 @@ class ImageClient:
         except Exception as e:
             return False, str(e)
 
+    def _generate_sd_img2img(self, prompt: str, reference_image: str,
+                            output_path: str, denoise: float) -> tuple[bool, str]:
+        """通过 SD WebUI img2img API 生成图片"""
+        url = f"{self.base_url}/sdapi/v1/img2img"
+
+        # 读取参考图并转 base64
+        with open(reference_image, "rb") as f:
+            init_images = [base64.b64encode(f.read()).decode("utf-8")]
+
+        payload = {
+            "prompt": prompt,
+            "negative_prompt": "text, watermark, logo, signature, words, letters, symbols, low quality, blurry, distorted",
+            "init_images": init_images,
+            "denoising_strength": denoise,
+            "steps": 30,
+            "width": 1024,
+            "height": 1024,
+            "cfg_scale": 7,
+            "sampler_name": "DPM++ 2M Karras",
+        }
+
+        try:
+            resp = self.client.post(url, json=payload, timeout=300.0)
+            resp.raise_for_status()
+            data = resp.json()
+            image_b64 = data["images"][0]
+            image_bytes = base64.b64decode(image_b64)
+            with open(output_path, "wb") as f:
+                f.write(image_bytes)
+            return True, "生成成功"
+        except Exception as e:
+            return False, str(e)
+
+    def _generate_comfyui(self, prompt: str, output_path: str,
+                          reference_image: str = None,
+                          denoise: float = 0.6) -> tuple[bool, str]:
+        """通过 ComfyUI 工作流生成图片"""
+        # 工作流路径：项目目录下 workflows/flux_img2img_api.json
+        project_root = Path(__file__).parent.parent
+        workflow_path = project_root / "workflows" / "flux_img2img_api.json"
+        if not workflow_path.exists():
+            return False, f"工作流文件不存在: {workflow_path}"
+
+        comfy = ComfyUIClient(self.base_url)
+
+        if reference_image:
+            return comfy.generate_img2img(
+                workflow_path=str(workflow_path),
+                reference_image=reference_image,
+                prompt=prompt,
+                output_path=output_path,
+                denoise=denoise,
+            )
+        else:
+            # 无参考图时，denoise=1.0 等于 txt2img
+            return comfy.generate_img2img(
+                workflow_path=str(workflow_path),
+                reference_image=reference_image or "",
+                prompt=prompt,
+                output_path=output_path,
+                denoise=1.0,
+            )
+
     def test_connection(self) -> tuple[bool, str]:
         """测试连接"""
         try:
-            if self.provider == "sd":
+            if self.provider == "comfyui":
+                comfy = ComfyUIClient(self.base_url)
+                return comfy.test_connection()
+            elif self.provider == "sd":
                 url = f"{self.base_url}/sdapi/v1/options"
                 resp = self.client.get(url, timeout=10.0)
                 resp.raise_for_status()
