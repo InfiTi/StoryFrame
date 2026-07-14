@@ -192,8 +192,9 @@ def generate_storyboard(
     frame_count: int,
     total_duration: int,
     product_info: Optional[ProductInfo] = None,
+    on_chunk=None,
 ) -> Storyboard:
-    """调用 LLM 生成分镜脚本"""
+    """调用 LLM 生成分镜脚本，支持流式回调"""
 
     user_prompt = build_user_prompt(
         product_name, product_desc, selling_points,
@@ -206,7 +207,7 @@ def generate_storyboard(
         {"role": "user", "content": user_prompt},
     ]
 
-    result = llm.chat_json(messages, temperature=0.8)
+    result = llm.chat_json(messages, temperature=0.8, on_chunk=on_chunk)
 
     # 保存调试文件
     debug_dir = Path("outputs") / "_debug"

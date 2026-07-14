@@ -31,6 +31,7 @@ class GenerateScriptWorker(QObject):
     """生成分镜脚本的工作线程"""
     finished = Signal(object)  # Storyboard
     error = Signal(str)
+    chunk = Signal(str)  # 流式片段
 
     def __init__(self, llm_config, product_name, product_desc,
                  selling_points, template, frame_count, total_duration,
@@ -52,6 +53,10 @@ class GenerateScriptWorker(QObject):
                 api_key=self.llm_config["api_key"],
                 model=self.llm_config["model"],
             )
+
+            def on_chunk(text):
+                self.chunk.emit(text)
+
             sb = generate_storyboard(
                 llm=llm,
                 product_name=self.product_name,
@@ -61,6 +66,7 @@ class GenerateScriptWorker(QObject):
                 frame_count=self.frame_count,
                 total_duration=self.total_duration,
                 product_info=self.product_info,
+                on_chunk=on_chunk,
             )
             llm.close()
             self.finished.emit(sb)
@@ -487,6 +493,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # 不确定进度
         self.status_label.setText("正在生成分镜脚本...")
+        self._chunk_count = 0
 
         # 启动工作线程
         self.script_thread = QThread()
@@ -504,9 +511,19 @@ class MainWindow(QMainWindow):
         self.script_thread.started.connect(self.script_worker.run)
         self.script_worker.finished.connect(self._on_script_finished)
         self.script_worker.error.connect(self._on_script_error)
+        self.script_worker.chunk.connect(self._on_script_chunk)
         self.script_worker.finished.connect(self.script_thread.quit)
         self.script_worker.error.connect(self.script_thread.quit)
         self.script_thread.start()
+
+    def _on_script_chunk(self, text: str):
+        """流式输出进度"""
+        cursor = self.status_label.text()
+        # 简单显示收到字符数
+        if not hasattr(self, '_chunk_count'):
+            self._chunk_count = 0
+        self._chunk_count += len(text)
+        self.status_label.setText(f"正在生成分镜脚本... 已接收 {self._chunk_count} 字符")
 
     def _on_script_finished(self, storyboard: Storyboard):
         """分镜脚本生成完成"""

@@ -27,8 +27,14 @@ class LLMClient:
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": 8192,
+            "max_tokens": 16384,
+            "stream": False,
         }
+        # 部分模型支持禁用 reasoning 以节省 token
+        try:
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
+        except Exception:
+            pass
 
         try:
             resp = self.client.post(url, json=payload, headers=headers)
@@ -43,9 +49,51 @@ class LLMClient:
         data = resp.json()
         return data["choices"][0]["message"]["content"]
 
-    def chat_json(self, messages: list, temperature: float = 0.8) -> list | dict:
-        """发送聊天请求，尝试解析 JSON 响应"""
-        raw = self.chat(messages, temperature)
+    def chat_stream(self, messages: list, temperature: float = 0.8):
+        """流式聊天，yield 每个文本片段"""
+        url = f"{self.base_url}/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+        }
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": 16384,
+            "stream": True,
+        }
+
+        with self.client.stream("POST", url, json=payload, headers=headers, timeout=300.0) as resp:
+            resp.raise_for_status()
+            for line in resp.iter_lines():
+                if not line:
+                    continue
+                if line.startswith("data: "):
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except json.JSONDecodeError:
+                        continue
+
+    def chat_json(self, messages: list, temperature: float = 0.8, on_chunk=None) -> list | dict:
+        """发送聊天请求，尝试解析 JSON 响应。支持流式回调。"""
+        if on_chunk:
+            # 流式模式：边收边回调
+            raw = ""
+            for chunk in self.chat_stream(messages, temperature):
+                raw += chunk
+                on_chunk(chunk)
+        else:
+            raw = self.chat(messages, temperature)
 
         # 保存原始响应到调试文件
         from pathlib import Path
@@ -79,7 +127,23 @@ class LLMClient:
             except json.JSONDecodeError:
                 pass
 
-        # 3. 逐步尝试提取 [ ... ] 或 { ... }（从外到内）
+        # 3. 截断修复优先：如果 [ 存在但 ] 不存在，说明 JSON 数组被截断
+        first_bracket = text.find("[")
+        last_bracket = text.rfind("]")
+        if first_bracket != -1 and (last_bracket == -1 or last_bracket < first_bracket):
+            # 数组被截断，找到最后一个完整的 } 补上 ]
+            partial = text[first_bracket:]
+            last_obj_end = partial.rfind('}')
+            if last_obj_end != -1:
+                candidate = partial[:last_obj_end + 1] + "]"
+                # 去尾逗号
+                candidate = re.sub(r',\s*\]', ']', candidate)
+                try:
+                    return json.loads(candidate)
+                except json.JSONDecodeError:
+                    pass
+
+        # 4. 尝试提取 [ ... ] 或 { ... }（从外到内）
         for start_char, end_char in [("[", "]"), ("{", "}")]:
             first = text.find(start_char)
             last = text.rfind(end_char)
@@ -88,22 +152,18 @@ class LLMClient:
                 try:
                     return json.loads(candidate)
                 except json.JSONDecodeError:
-                    # 3b. 尝试修复常见问题后解析
                     try:
-                        # 去掉行内注释 // ...
                         cleaned = re.sub(r'//.*?(?=[\n,}\]\'])', '', candidate)
-                        # 去掉尾逗号 (trailing commas)
                         cleaned = re.sub(r',\s*([}\]])', r'\1', cleaned)
                         return json.loads(cleaned)
                     except json.JSONDecodeError:
                         pass
 
-        # 4. 最后一搏：找到第一个 [ 或 {，逐步缩短尾部重试
+        # 5. 逐步缩短尾部重试
         for start_char, end_char in [("[", "]"), ("{", "}")]:
             first = text.find(start_char)
             if first == -1:
                 continue
-            # 从后往前找能配对的 end_char
             for i in range(len(text) - 1, first, -1):
                 if text[i] == end_char:
                     try:
