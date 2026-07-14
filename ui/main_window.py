@@ -113,7 +113,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("StoryFrame - 分镜图生成器")
-        self.setMinimumSize(1100, 700)
+        self.setMinimumSize(1400, 900)
         self.config = load_config()
         self.current_storyboard: Storyboard | None = None
         self.current_frames_data: list = []
@@ -127,6 +127,7 @@ class MainWindow(QMainWindow):
 
         self._init_ui()
         self._apply_style()
+        self._load_product_list()
 
     def _init_ui(self):
         # 中央部件
@@ -138,7 +139,7 @@ class MainWindow(QMainWindow):
 
         # ========== 左侧面板 ==========
         left_panel = QWidget()
-        left_panel.setFixedWidth(320)
+        left_panel.setFixedWidth(380)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setSpacing(10)
 
@@ -149,7 +150,7 @@ class MainWindow(QMainWindow):
         # 商品列表
         product_form.addRow(QLabel("选择商品："))
         self.product_list = QListWidget()
-        self.product_list.setMaximumHeight(120)
+        self.product_list.setMaximumHeight(160)
         self.product_list.setStyleSheet("""
             QListWidget {
                 background-color: #313244;
@@ -178,12 +179,12 @@ class MainWindow(QMainWindow):
 
         self.product_desc_input = QTextEdit()
         self.product_desc_input.setPlaceholderText("描述产品外观、口感、包装等...")
-        self.product_desc_input.setMaximumHeight(80)
+        self.product_desc_input.setMaximumHeight(100)
         product_form.addRow("产品描述：", self.product_desc_input)
 
         self.selling_points_input = QTextEdit()
         self.selling_points_input.setPlaceholderText("如：芒果味浓郁、柔软不粘牙、独立包装...")
-        self.selling_points_input.setMaximumHeight(80)
+        self.selling_points_input.setMaximumHeight(100)
         product_form.addRow("卖点：", self.selling_points_input)
 
         left_layout.addWidget(product_group)
