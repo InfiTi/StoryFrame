@@ -132,6 +132,10 @@ class ComfyUIClient:
                 inputs["width"] = width
                 inputs["height"] = height
 
+            elif cls == "EmptySD3LatentImage":
+                inputs["width"] = width
+                inputs["height"] = height
+
     def _wait_and_download(self, workflow: dict, actual_seed: int,
                            output_path: str) -> tuple[bool, str]:
         """提交工作流、等待完成、下载图片（通用逻辑）"""
@@ -191,22 +195,31 @@ class ComfyUIClient:
         reference_images: list,
         prompt: str,
         output_path: str,
-        guidance: float = 2.5,
-        steps: int = 30,
+        guidance: float = 3.5,
+        steps: int = 20,
         seed: int = -1,
+        width: int = 1024,
+        height: int = 1024,
     ) -> tuple[bool, str]:
         """
         使用 Flux Kontext 模型生成图片
         Kontext 专门做图像编辑，输入参考图 + 文字指令，保持主体一致性
 
+        工作流结构（flux_kontext_api.json）:
+            LoadImage → FluxKontextImageScale → VAEEncode → ReferenceLatent → FluxGuidance
+            EmptySD3LatentImage → KSampler (denoise=1.0, 从空白 latent 生成)
+            ConditioningZeroOut 作为负面提示词
+
         参数:
             workflow_path: Kontext 工作流 JSON 路径
-            reference_images: 参考图路径列表（至少1张，支持多张）
+            reference_images: 参考图路径列表（至少1张）
             prompt: 编辑指令/提示词（英文）
             output_path: 输出图片路径
-            guidance: Flux 引导强度 (1-12)，越低越自由，越高越遵循提示词
-            steps: 采样步数
+            guidance: Flux 引导强度（推荐 2.5-4.0）
+            steps: 采样步数（推荐 20）
             seed: 随机种子，-1 为随机
+            width: 输出图片宽度
+            height: 输出图片高度
         """
         try:
             with open(workflow_path, "r", encoding="utf-8") as f:
@@ -214,7 +227,6 @@ class ComfyUIClient:
 
             actual_seed = seed if seed >= 0 else random.randint(0, 2**32 - 1)
 
-            # 上传第一张参考图，填入 LoadImage
             if not reference_images:
                 return False, "Kontext 需要至少一张参考图"
 
@@ -230,7 +242,6 @@ class ComfyUIClient:
                 elif cls == "CLIPTextEncode":
                     old_text = inputs.get("text", "")
                     if old_text == "":
-                        # Kontext 用编辑指令风格，追加禁止文字约束
                         full_prompt = f"{prompt}, no text, no words, no letters, no logo, no watermark, no label"
                         inputs["text"] = full_prompt
 
@@ -240,7 +251,11 @@ class ComfyUIClient:
                 elif cls == "KSampler":
                     inputs["seed"] = actual_seed
                     inputs["steps"] = steps
-                    inputs["denoise"] = 1.0  # Kontext 用 denoise=1.0
+                    inputs["denoise"] = 1.0
+
+                elif cls == "EmptySD3LatentImage":
+                    inputs["width"] = width
+                    inputs["height"] = height
 
             return self._wait_and_download(workflow, actual_seed, output_path)
 

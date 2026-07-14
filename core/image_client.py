@@ -178,8 +178,8 @@ class ImageClient:
             reference_images=reference_images,
             prompt=prompt,
             output_path=output_path,
-            guidance=2.5,
-            steps=30,
+            guidance=3.5,
+            steps=20,
         )
 
     def test_connection(self) -> tuple[bool, str]:
