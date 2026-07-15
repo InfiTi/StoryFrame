@@ -57,25 +57,25 @@ class FrameListItem(QWidget):
 
     def _init_ui(self):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(8)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(10)
 
         # 左侧：帧序号
         num_label = QLabel(f"{self.frame_data.get('frame', self.index + 1)}")
-        num_label.setFixedSize(28, 28)
+        num_label.setFixedSize(36, 36)
         num_label.setAlignment(Qt.AlignCenter)
         num_label.setStyleSheet(
-            "QLabel { background: #313244; border-radius: 14px; "
-            "font-weight: bold; font-size: 13px; color: #cdd6f4; }"
+            "QLabel { background: #313244; border-radius: 18px; "
+            "font-weight: bold; font-size: 16px; color: #cdd6f4; }"
         )
         layout.addWidget(num_label)
 
         # 中间：缩略图
         self.image_label = QLabel()
-        self.image_label.setFixedSize(48, 48)
+        self.image_label.setFixedSize(56, 56)
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setStyleSheet(
-            "background: #11111b; border-radius: 4px; color: #585b70; font-size: 10px;"
+            "background: #11111b; border-radius: 4px; color: #585b70; font-size: 12px;"
         )
         self.image_label.setText("无图")
 
@@ -83,7 +83,7 @@ class FrameListItem(QWidget):
         if img_path and Path(img_path).exists():
             pix = QPixmap(img_path)
             if not pix.isNull():
-                scaled = pix.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                scaled = pix.scaled(56, 56, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 self.image_label.setPixmap(scaled)
                 self.image_label.setStyleSheet("background: transparent;")
 
@@ -91,16 +91,16 @@ class FrameListItem(QWidget):
 
         # 右侧：时长+描述
         info_layout = QVBoxLayout()
-        info_layout.setSpacing(2)
+        info_layout.setSpacing(3)
         duration = self.frame_data.get("duration", 0)
         dur_label = QLabel(f"{duration:.1f}s")
-        dur_label.setStyleSheet("color: #a6adc8; font-size: 11px;")
+        dur_label.setStyleSheet("color: #a6adc8; font-size: 13px;")
         info_layout.addWidget(dur_label)
 
         desc = self.frame_data.get("description", "")
         desc_label = QLabel(desc)
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("font-size: 11px; color: #a6adc8;")
+        desc_label.setStyleSheet("font-size: 13px; color: #a6adc8;")
         desc_label.setMaximumWidth(180)
         info_layout.addWidget(desc_label)
 
@@ -277,7 +277,7 @@ class StoryboardView(QWidget):
         for i, frame in enumerate(frames):
             item_widget = FrameListItem(frame, i)
             list_item = QListWidgetItem()
-            list_item.setSizeHint(QSize(240, 64))
+            list_item.setSizeHint(QSize(240, 76))
             self.list_widget.addItem(list_item)
             self.list_widget.setItemWidget(list_item, item_widget)
             self.list_items.append(list_item)
