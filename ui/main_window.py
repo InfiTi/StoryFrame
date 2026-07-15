@@ -320,114 +320,92 @@ class MainWindow(QMainWindow):
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
 
-        # 分镜时间轴
+        # 分镜视图（包含帧列表+详情+提示词）
         self.storyboard_view = StoryboardView()
-        right_layout.addWidget(self.storyboard_view, stretch=3)
+        self.storyboard_view.frame_selected.connect(self._on_frame_selected)
+        right_layout.addWidget(self.storyboard_view, stretch=1)
 
-        # 帧详情
-        detail_group = QGroupBox("帧详情")
-        detail_layout = QVBoxLayout(detail_group)
+        # 底部操作栏
+        bottom_bar = QHBoxLayout()
 
-        # 图片提示词
-        prompt_header = QHBoxLayout()
-        prompt_header.addWidget(QLabel("图片提示词（用于 AI 生图）："))
-        prompt_header.addStretch()
-        self.copy_prompt_en_btn = QPushButton("📋 复制英文")
-        self.copy_prompt_en_btn.setFixedHeight(24)
+        self.generate_single_btn = QPushButton("🖼️ 生成此帧图片")
+        self.generate_single_btn.setEnabled(False)
+        self.generate_single_btn.clicked.connect(self._generate_single_image)
+        bottom_bar.addWidget(self.generate_single_btn)
+        bottom_bar.addStretch()
+
+        # 复制按钮组
+        copy_group_label = QLabel("复制全部帧：")
+        copy_group_label.setStyleSheet("color: #a6adc8; font-size: 12px;")
+        bottom_bar.addWidget(copy_group_label)
+
+        self.copy_prompt_en_btn = QPushButton("提示词EN")
+        self.copy_prompt_en_btn.setFixedHeight(30)
         self.copy_prompt_en_btn.setStyleSheet(
-            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 8px; }"
+            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 10px; }"
             "QPushButton:hover { background: #45475a; }"
             "QPushButton:disabled { background: #181825; color: #585b70; }"
         )
         self.copy_prompt_en_btn.setEnabled(False)
         self.copy_prompt_en_btn.clicked.connect(lambda: self._copy_all_field("image_prompt"))
-        prompt_header.addWidget(self.copy_prompt_en_btn)
-        self.copy_prompt_cn_btn = QPushButton("📋 复制中文")
-        self.copy_prompt_cn_btn.setFixedHeight(24)
+        bottom_bar.addWidget(self.copy_prompt_en_btn)
+
+        self.copy_prompt_cn_btn = QPushButton("提示词CN")
+        self.copy_prompt_cn_btn.setFixedHeight(30)
         self.copy_prompt_cn_btn.setStyleSheet(
-            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 8px; }"
+            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 10px; }"
             "QPushButton:hover { background: #45475a; }"
             "QPushButton:disabled { background: #181825; color: #585b70; }"
         )
         self.copy_prompt_cn_btn.setEnabled(False)
         self.copy_prompt_cn_btn.clicked.connect(lambda: self._copy_all_field("image_prompt_cn"))
-        prompt_header.addWidget(self.copy_prompt_cn_btn)
-        detail_layout.addLayout(prompt_header)
+        bottom_bar.addWidget(self.copy_prompt_cn_btn)
 
-        self.image_prompt_edit = QTextEdit()
-        self.image_prompt_edit.setReadOnly(True)
-        self.image_prompt_edit.setMaximumHeight(120)
-        detail_layout.addWidget(self.image_prompt_edit)
-
-        # 镜头运动
-        motion_header = QHBoxLayout()
-        motion_header.addWidget(QLabel("镜头运动（用于图生视频）："))
-        motion_header.addStretch()
-        self.copy_motion_en_btn = QPushButton("📋 复制英文")
-        self.copy_motion_en_btn.setFixedHeight(24)
+        self.copy_motion_en_btn = QPushButton("镜头EN")
+        self.copy_motion_en_btn.setFixedHeight(30)
         self.copy_motion_en_btn.setStyleSheet(
-            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 8px; }"
+            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 10px; }"
             "QPushButton:hover { background: #45475a; }"
             "QPushButton:disabled { background: #181825; color: #585b70; }"
         )
         self.copy_motion_en_btn.setEnabled(False)
         self.copy_motion_en_btn.clicked.connect(lambda: self._copy_all_field("camera_motion"))
-        motion_header.addWidget(self.copy_motion_en_btn)
-        self.copy_motion_cn_btn = QPushButton("📋 复制中文")
-        self.copy_motion_cn_btn.setFixedHeight(24)
+        bottom_bar.addWidget(self.copy_motion_en_btn)
+
+        self.copy_motion_cn_btn = QPushButton("镜头CN")
+        self.copy_motion_cn_btn.setFixedHeight(30)
         self.copy_motion_cn_btn.setStyleSheet(
-            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 8px; }"
+            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 10px; }"
             "QPushButton:hover { background: #45475a; }"
             "QPushButton:disabled { background: #181825; color: #585b70; }"
         )
         self.copy_motion_cn_btn.setEnabled(False)
         self.copy_motion_cn_btn.clicked.connect(lambda: self._copy_all_field("camera_motion_cn"))
-        motion_header.addWidget(self.copy_motion_cn_btn)
-        detail_layout.addLayout(motion_header)
+        bottom_bar.addWidget(self.copy_motion_cn_btn)
 
-        self.camera_motion_edit = QTextEdit()
-        self.camera_motion_edit.setReadOnly(True)
-        self.camera_motion_edit.setMaximumHeight(80)
-        detail_layout.addWidget(self.camera_motion_edit)
-
-        # 画面动态提示
-        hint_header = QHBoxLayout()
-        hint_header.addWidget(QLabel("画面动态（产品怎么动）："))
-        hint_header.addStretch()
-        self.copy_hint_en_btn = QPushButton("📋 复制英文")
-        self.copy_hint_en_btn.setFixedHeight(24)
+        self.copy_hint_en_btn = QPushButton("动态EN")
+        self.copy_hint_en_btn.setFixedHeight(30)
         self.copy_hint_en_btn.setStyleSheet(
-            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 8px; }"
+            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 10px; }"
             "QPushButton:hover { background: #45475a; }"
             "QPushButton:disabled { background: #181825; color: #585b70; }"
         )
         self.copy_hint_en_btn.setEnabled(False)
         self.copy_hint_en_btn.clicked.connect(lambda: self._copy_all_field("motion_hint"))
-        hint_header.addWidget(self.copy_hint_en_btn)
-        self.copy_hint_cn_btn = QPushButton("📋 复制中文")
-        self.copy_hint_cn_btn.setFixedHeight(24)
+        bottom_bar.addWidget(self.copy_hint_en_btn)
+
+        self.copy_hint_cn_btn = QPushButton("动态CN")
+        self.copy_hint_cn_btn.setFixedHeight(30)
         self.copy_hint_cn_btn.setStyleSheet(
-            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 8px; }"
+            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 10px; }"
             "QPushButton:hover { background: #45475a; }"
             "QPushButton:disabled { background: #181825; color: #585b70; }"
         )
         self.copy_hint_cn_btn.setEnabled(False)
         self.copy_hint_cn_btn.clicked.connect(lambda: self._copy_all_field("motion_hint_cn"))
-        hint_header.addWidget(self.copy_hint_cn_btn)
-        detail_layout.addLayout(hint_header)
+        bottom_bar.addWidget(self.copy_hint_cn_btn)
 
-        self.motion_hint_edit = QTextEdit()
-        self.motion_hint_edit.setReadOnly(True)
-        self.motion_hint_edit.setMaximumHeight(80)
-        detail_layout.addWidget(self.motion_hint_edit)
-
-        # 单帧生成图片按钮
-        self.generate_single_btn = QPushButton("🖼️ 生成此帧图片")
-        self.generate_single_btn.setEnabled(False)
-        self.generate_single_btn.clicked.connect(self._generate_single_image)
-        detail_layout.addWidget(self.generate_single_btn)
-
-        right_layout.addWidget(detail_group, stretch=2)
+        right_layout.addLayout(bottom_bar)
 
         # 组装
         main_layout.addWidget(left_panel)
@@ -688,7 +666,6 @@ class MainWindow(QMainWindow):
 
         # 更新视图
         self.storyboard_view.set_frames(self.current_frames_data)
-        self.storyboard_view.frame_selected.connect(self._on_frame_selected)
 
         # 恢复按钮
         self.generate_script_btn.setEnabled(True)
@@ -761,7 +738,6 @@ class MainWindow(QMainWindow):
 
         # 更新视图
         self.storyboard_view.set_frames(self.current_frames_data)
-        self.storyboard_view.frame_selected.connect(self._on_frame_selected)
 
         self.generate_images_btn.setEnabled(True)
         self.export_json_btn.setEnabled(True)
@@ -777,23 +753,7 @@ class MainWindow(QMainWindow):
 
     def _on_frame_selected(self, index: int):
         """选中某帧"""
-        if 0 <= index < len(self.current_frames_data):
-            frame = self.current_frames_data[index]
-            # 中英文对照显示
-            en = frame.get("image_prompt", "")
-            cn = frame.get("image_prompt_cn", "")
-            self.image_prompt_edit.setText(f"[EN]\n{en}\n\n[CN]\n{cn}" if cn else en)
-
-            en_motion = frame.get("camera_motion", "")
-            cn_motion = frame.get("camera_motion_cn", "")
-            self.camera_motion_edit.setText(f"[EN] {en_motion}\n[CN] {cn_motion}" if cn_motion else en_motion)
-
-            en_hint = frame.get("motion_hint", "")
-            cn_hint = frame.get("motion_hint_cn", "")
-            self.motion_hint_edit.setText(f"[EN] {en_hint}\n[CN] {cn_hint}" if cn_hint else en_hint)
-
-            self.generate_single_btn.setEnabled(True)
-            self.storyboard_view.selected_index = index
+        self.generate_single_btn.setEnabled(True)
 
     def _copy_all_field(self, field_name: str):
         """复制所有帧的指定字段"""
