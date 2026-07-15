@@ -405,6 +405,33 @@ class MainWindow(QMainWindow):
         self.copy_hint_cn_btn.clicked.connect(lambda: self._copy_all_field("motion_hint_cn"))
         bottom_bar.addWidget(self.copy_hint_cn_btn)
 
+        # 豆包提示词按钮
+        doubao_sep = QLabel("│")
+        doubao_sep.setStyleSheet("color: #45475a; font-size: 14px;")
+        bottom_bar.addWidget(doubao_sep)
+
+        self.doubao_img_btn = QPushButton("📎 豆包图片")
+        self.doubao_img_btn.setFixedHeight(30)
+        self.doubao_img_btn.setStyleSheet(
+            "QPushButton { background: #a6e3a1; color: #11111b; font-size: 11px; font-weight: bold; border-radius: 4px; border: none; padding: 2px 12px; }"
+            "QPushButton:hover { background: #94d68a; }"
+            "QPushButton:disabled { background: #181825; color: #585b70; }"
+        )
+        self.doubao_img_btn.setEnabled(False)
+        self.doubao_img_btn.clicked.connect(self._copy_doubao_image_prompt)
+        bottom_bar.addWidget(self.doubao_img_btn)
+
+        self.doubao_video_btn = QPushButton("🎬 豆包视频")
+        self.doubao_video_btn.setFixedHeight(30)
+        self.doubao_video_btn.setStyleSheet(
+            "QPushButton { background: #f9e2af; color: #11111b; font-size: 11px; font-weight: bold; border-radius: 4px; border: none; padding: 2px 12px; }"
+            "QPushButton:hover { background: #efd9a6; }"
+            "QPushButton:disabled { background: #181825; color: #585b70; }"
+        )
+        self.doubao_video_btn.setEnabled(False)
+        self.doubao_video_btn.clicked.connect(self._copy_doubao_video_prompt)
+        bottom_bar.addWidget(self.doubao_video_btn)
+
         right_layout.addLayout(bottom_bar)
 
         # 组装
@@ -681,6 +708,8 @@ class MainWindow(QMainWindow):
         self.copy_motion_cn_btn.setEnabled(True)
         self.copy_hint_en_btn.setEnabled(True)
         self.copy_hint_cn_btn.setEnabled(True)
+        self.doubao_img_btn.setEnabled(True)
+        self.doubao_video_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.status_label.setText(f"已生成 {len(storyboard.frames)} 帧分镜脚本（已缓存）")
 
@@ -751,6 +780,8 @@ class MainWindow(QMainWindow):
         self.copy_motion_cn_btn.setEnabled(True)
         self.copy_hint_en_btn.setEnabled(True)
         self.copy_hint_cn_btn.setEnabled(True)
+        self.doubao_img_btn.setEnabled(True)
+        self.doubao_video_btn.setEnabled(True)
         self.status_label.setText(f"已加载缓存版本：{len(frames)} 帧")
 
     def _on_frame_selected(self, index: int):
@@ -785,6 +816,97 @@ class MainWindow(QMainWindow):
         }
         label = field_labels.get(field_name, field_name)
         self.status_label.setText(f"已复制 {len(self.current_frames_data)} 帧{label}")
+
+    def _get_product_summary(self) -> str:
+        """获取商品摘要信息"""
+        name = self.product_name_input.text().strip()
+        desc = self.product_desc_input.toPlainText().strip()
+        selling = self.selling_points_input.toPlainText().strip()
+        parts = []
+        if name:
+            parts.append(f"商品名称：{name}")
+        if desc:
+            parts.append(f"商品描述：{desc}")
+        if selling:
+            parts.append(f"卖点：{selling}")
+        return "\n".join(parts) if parts else "（未填写商品信息）"
+
+    def _copy_doubao_image_prompt(self):
+        """复制豆包图片生成提示词"""
+        if not self.current_frames_data:
+            return
+        product = self._get_product_summary()
+        frames = self.current_frames_data
+        frame_count = len(frames)
+
+        lines = []
+        lines.append("你是一个专业的零食带货短视频美术指导。我会给你商品参考图和分镜描述，你需要根据这些信息生成对应的图片。")
+        lines.append("")
+        lines.append("## 商品信息")
+        lines.append(product)
+        lines.append("")
+        lines.append(f"## 图片要求")
+        lines.append("- 构图：主体内容集中在画面中间 80% 区域，上下各留 10% 的留白空间（不要放重要元素在上下边缘）")
+        lines.append("- 原因：后期会裁切上下边缘（水印区域），所以关键信息、商品、文字必须在中间 80% 以内")
+        lines.append("- 风格：快速、简洁、冲击力强，色彩饱和度高，适合短视频带货")
+        lines.append("- 商品还原：严格参考我给的商品参考图，保持商品外观、颜色、包装高度一致")
+        lines.append("- 不要在画面中生成任何中文文字")
+        lines.append("- 画面比例：9:16（竖屏短视频）")
+        lines.append("")
+        lines.append(f"## 分镜列表（共 {frame_count} 帧，请一次性全部生成）")
+        lines.append("")
+        for i, f in enumerate(frames):
+            frame_num = f.get("frame", i + 1)
+            duration = f.get("duration", 0)
+            lines.append(f"### 第 {frame_num} 帧（{duration:.1f}s）")
+            lines.append(f"画面描述：{f.get('description', '—')}")
+            lines.append(f"图片提示词：{f.get('image_prompt_cn', f.get('image_prompt', '—'))}")
+            lines.append(f"画面动态：{f.get('motion_hint_cn', f.get('motion_hint', '—'))}")
+            lines.append("")
+
+        lines.append("请根据以上分镜列表，结合我提供的商品参考图，一次性生成全部 {} 张图片。".format(frame_count))
+
+        text = "\n".join(lines)
+        QApplication.clipboard().setText(text)
+        self.status_label.setText(f"已复制豆包图片提示词（{frame_count} 帧）")
+
+    def _copy_doubao_video_prompt(self):
+        """复制豆包视频生成提示词"""
+        if not self.current_frames_data:
+            return
+        product = self._get_product_summary()
+        frames = self.current_frames_data
+        frame_count = len(frames)
+
+        lines = []
+        lines.append("现在根据刚才生成的图片，逐帧生成对应的视频。")
+        lines.append("")
+        lines.append("## 商品信息")
+        lines.append(product)
+        lines.append("")
+        lines.append("## 视频要求")
+        lines.append("- 主体始终保持在画面中间 80% 区域，上下各 10% 不要有重要内容（会被裁切掉水印）")
+        lines.append("- 风格：快速、简洁、冲击力强，节奏干脆利落")
+        lines.append("- 商品外观必须与参考图保持一致")
+        lines.append("- 不要出现任何文字或水印")
+        lines.append("- 画面比例：9:16（竖屏短视频）")
+        lines.append("")
+        lines.append(f"## 逐帧视频指令（共 {frame_count} 帧）")
+        lines.append("")
+        for i, f in enumerate(frames):
+            frame_num = f.get("frame", i + 1)
+            duration = f.get("duration", 0)
+            lines.append(f"### 第 {frame_num} 帧（{duration:.1f}s）")
+            lines.append(f"镜头运动：{f.get('camera_motion_cn', f.get('camera_motion', '—'))}")
+            lines.append(f"画面动态：{f.get('motion_hint_cn', f.get('motion_hint', '—'))}")
+            lines.append(f"时长：{duration:.1f} 秒")
+            lines.append("")
+
+        lines.append("请逐帧生成视频，每生成一段等我确认后再生成下一段。".format(frame_count))
+
+        text = "\n".join(lines)
+        QApplication.clipboard().setText(text)
+        self.status_label.setText(f"已复制豆包视频提示词（{frame_count} 帧）")
 
     def _generate_single_image(self):
         """生成选中帧的图片"""
