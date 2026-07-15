@@ -123,6 +123,8 @@ def parse_product_markdown(file_path: str) -> ProductInfo:
         if key == "商品标题":
             if not info.title:
                 info.title = val
+        elif key == "商品类目":
+            info.category = val
         elif key == "到手价":
             info.price = val
         elif key == "已售":
@@ -178,48 +180,47 @@ def parse_product_markdown(file_path: str) -> ProductInfo:
             if keyword not in info.texture_keywords:
                 info.texture_keywords.append(keyword)
 
-    # 7.5 提取商品类目
-    # 优先从趋势榜提取（如"曲奇饼干趋势榜·第4名" → "饼干"）
-    if info.trend_rank:
-        if "饼干" in info.trend_rank:
-            info.category = "饼干"
-        elif "面包" in info.trend_rank:
-            info.category = "面包"
-        elif "牛肉干" in info.trend_rank:
-            info.category = "牛肉干"
-        elif "糕点" in info.trend_rank:
-            info.category = "糕点"
-        elif "坚果" in info.trend_rank:
-            info.category = "坚果"
-        elif "果干" in info.trend_rank:
-            info.category = "果干"
-        elif "糖果" in info.trend_rank:
-            info.category = "糖果"
-        elif "巧克力" in info.trend_rank:
-            info.category = "巧克力"
-        elif "膨化" in info.trend_rank:
-            info.category = "膨化食品"
-    # 如果趋势榜没提到，从标题提取
+    # 7.5 提取商品类目（表格已有则直接用，没有则从趋势榜/标题 fallback）
     if not info.category:
-        title_text = info.title or ""
-        if "饼干" in title_text or "曲奇" in title_text:
-            info.category = "饼干"
-        elif "面包" in title_text:
-            info.category = "面包"
-        elif "牛肉干" in title_text or "牛肉粒" in title_text:
-            info.category = "牛肉干"
-        elif "糕" in title_text or "蛋糕" in title_text:
-            info.category = "糕点"
-        elif "坚果" in title_text or "夏威夷果" in title_text or "腰果" in title_text:
-            info.category = "坚果"
-        elif "果干" in title_text or "芒果干" in title_text or "葡萄干" in title_text:
-            info.category = "果干"
-        elif "糖" in title_text:
-            info.category = "糖果"
-        elif "巧克力" in title_text:
-            info.category = "巧克力"
-        elif "薯片" in title_text or "锅巴" in title_text:
-            info.category = "膨化食品"
+        if info.trend_rank:
+            if "饼干" in info.trend_rank:
+                info.category = "饼干"
+            elif "面包" in info.trend_rank:
+                info.category = "面包"
+            elif "牛肉干" in info.trend_rank:
+                info.category = "牛肉干"
+            elif "糕点" in info.trend_rank:
+                info.category = "糕点"
+            elif "坚果" in info.trend_rank:
+                info.category = "坚果"
+            elif "果干" in info.trend_rank:
+                info.category = "果干"
+            elif "糖果" in info.trend_rank:
+                info.category = "糖果"
+            elif "巧克力" in info.trend_rank:
+                info.category = "巧克力"
+            elif "膨化" in info.trend_rank:
+                info.category = "膨化食品"
+        if not info.category:
+            title_text = info.title or ""
+            if "饼干" in title_text or "曲奇" in title_text:
+                info.category = "饼干"
+            elif "面包" in title_text:
+                info.category = "面包"
+            elif "牛肉干" in title_text or "牛肉粒" in title_text:
+                info.category = "牛肉干"
+            elif "糕" in title_text or "蛋糕" in title_text:
+                info.category = "糕点"
+            elif "坚果" in title_text or "夏威夷果" in title_text or "腰果" in title_text:
+                info.category = "坚果"
+            elif "果干" in title_text or "芒果干" in title_text or "葡萄干" in title_text:
+                info.category = "果干"
+            elif "糖" in title_text:
+                info.category = "糖果"
+            elif "巧克力" in title_text:
+                info.category = "巧克力"
+            elif "薯片" in title_text or "锅巴" in title_text:
+                info.category = "膨化食品"
 
     # 8. 组合产品描述
     desc_parts = []
