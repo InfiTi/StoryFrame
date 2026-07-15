@@ -196,6 +196,10 @@ class MainWindow(QMainWindow):
         self.product_name_input.setPlaceholderText("如：芒果干")
         product_form.addRow("零食名称：", self.product_name_input)
 
+        self.product_category_input = QLineEdit()
+        self.product_category_input.setPlaceholderText("如：饼干、面包、牛肉干")
+        product_form.addRow("商品类目：", self.product_category_input)
+
         self.product_desc_input = QTextEdit()
         self.product_desc_input.setPlaceholderText("描述产品外观、口感、包装等...")
         self.product_desc_input.setMaximumHeight(100)
@@ -596,6 +600,7 @@ class MainWindow(QMainWindow):
 
             # 填充输入框
             self.product_name_input.setText(info.name)
+            self.product_category_input.setText(info.category)
             self.product_desc_input.setPlainText(info.description)
 
             # 卖点用换行分隔
@@ -820,32 +825,41 @@ class MainWindow(QMainWindow):
     def _get_product_summary(self) -> str:
         """获取商品摘要信息"""
         name = self.product_name_input.text().strip()
+        category = self.product_category_input.text().strip()
         desc = self.product_desc_input.toPlainText().strip()
         selling = self.selling_points_input.toPlainText().strip()
         parts = []
         if name:
             parts.append(f"商品名称：{name}")
+        if category:
+            parts.append(f"商品类目：{category}")
         if desc:
             parts.append(f"商品描述：{desc}")
         if selling:
             parts.append(f"卖点：{selling}")
         return "\n".join(parts) if parts else "（未填写商品信息）"
 
+    def _get_product_category(self) -> str:
+        """获取商品类目，用于豆包提示词中简要描述"""
+        category = self.product_category_input.text().strip()
+        if category:
+            return category
+        # 如果没填类目，从名称里尝试提取
+        name = self.product_name_input.text().strip()
+        return name if name else "零食"
+
     def _copy_doubao_image_prompt(self):
         """复制豆包图片生成提示词"""
         if not self.current_frames_data:
             return
-        product = self._get_product_summary()
+        category = self._get_product_category()
         frames = self.current_frames_data
         frame_count = len(frames)
 
         lines = []
-        lines.append("你是一个专业的零食带货短视频美术指导。我会给你商品参考图和分镜描述，你需要根据这些信息生成对应的图片。")
+        lines.append(f"你是一个专业的零食带货短视频美术指导。我会给你商品参考图和分镜描述，你需要根据这些信息生成对应的图片。主要产品是{category}。")
         lines.append("")
-        lines.append("## 商品信息")
-        lines.append(product)
-        lines.append("")
-        lines.append(f"## 图片要求")
+        lines.append("## 图片要求")
         lines.append("- 构图：主体内容集中在画面中间 80% 区域，上下各留 10% 的留白空间（不要放重要元素在上下边缘）")
         lines.append("- 原因：后期会裁切上下边缘（水印区域），所以关键信息、商品、文字必须在中间 80% 以内")
         lines.append("- 风格：快速、简洁、冲击力强，色彩饱和度高，适合短视频带货")
@@ -864,7 +878,7 @@ class MainWindow(QMainWindow):
             lines.append(f"画面动态：{f.get('motion_hint_cn', f.get('motion_hint', '—'))}")
             lines.append("")
 
-        lines.append("请根据以上分镜列表，结合我提供的商品参考图，一次性生成全部 {} 张图片。".format(frame_count))
+        lines.append(f"请根据以上分镜列表，结合我提供的商品参考图，一次性生成全部 {frame_count} 张图片。")
 
         text = "\n".join(lines)
         QApplication.clipboard().setText(text)
@@ -874,15 +888,12 @@ class MainWindow(QMainWindow):
         """复制豆包视频生成提示词"""
         if not self.current_frames_data:
             return
-        product = self._get_product_summary()
+        category = self._get_product_category()
         frames = self.current_frames_data
         frame_count = len(frames)
 
         lines = []
-        lines.append("现在根据刚才生成的图片，逐帧生成对应的视频。")
-        lines.append("")
-        lines.append("## 商品信息")
-        lines.append(product)
+        lines.append(f"现在根据刚才生成的图片，逐帧生成对应的视频。主要产品是{category}。")
         lines.append("")
         lines.append("## 视频要求")
         lines.append("- 主体始终保持在画面中间 80% 区域，上下各 10% 不要有重要内容（会被裁切掉水印）")
