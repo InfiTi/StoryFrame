@@ -1,31 +1,31 @@
 """分镜预览视图
 
-布局：左侧帧列表（垂直可滚动）+ 右侧提示词详情面板
-点击缩略图弹出大图预览。
+布局：纵向卡片流 — 每帧一行（序号 + 缩略图 + 所有提示词 EN/CN）
+整体上下滚动浏览，无需点击切换。
+点击缩略图弹出大图预览，点击卡片选中帧。
 字体大小可通过 config["ui"]["font_size"] 配置。
 """
 
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame,
-    QScrollArea, QPushButton, QSizePolicy, QTextEdit,
-    QListWidget, QListWidgetItem, QDialog, QGridLayout,
+    QScrollArea, QSizePolicy, QDialog,
 )
-from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QPixmap, QIcon, QFont
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPixmap
 from pathlib import Path
 import json
 import os
 
 
 def _load_font_size() -> int:
-    """从 config.json 读取字体大小，默认 13"""
+    """从 config.json 读取字体大小，默认 15"""
     try:
         config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.json")
         with open(config_path, "r", encoding="utf-8") as f:
             cfg = json.load(f)
-        return cfg.get("ui", {}).get("font_size", 13)
+        return cfg.get("ui", {}).get("font_size", 15)
     except Exception:
-        return 13
+        return 15
 
 
 class ImagePreviewDialog(QDialog):
@@ -46,8 +46,8 @@ class ImagePreviewDialog(QDialog):
             screen = self.screen()
             if screen:
                 avail = screen.availableGeometry()
-                max_w = int(avail.width() * 0.8)
-                max_h = int(avail.height() * 0.8)
+                max_w = int(avail.width() * 0.85)
+                max_h = int(avail.height() * 0.85)
                 if pix.width() > max_w or pix.height() > max_h:
                     pix = pix.scaled(max_w, max_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             label.setPixmap(pix)
@@ -59,40 +59,46 @@ class ImagePreviewDialog(QDialog):
         self.setStyleSheet("QDialog { background: #11111b; }")
 
 
-class FrameListItem(QWidget):
-    """帧列表项 - 显示序号+缩略图+描述"""
+class FrameCard(QFrame):
+    """单帧卡片 — 序号 + 缩略图 + 提示词(EN/CN) 全部展示"""
 
-    def __init__(self, frame_data: dict, index: int, font_size: int = 13):
+    clicked = Signal(int)       # 卡片点击
+    image_clicked = Signal(str) # 图片点击（传路径）
+
+    def __init__(self, frame_data: dict, index: int, font_size: int = 15):
         super().__init__()
         self.index = index
         self.frame_data = frame_data
         self.font_size = font_size
+        self.selected = False
         self._init_ui()
+        self._update_style()
 
     def _init_ui(self):
         fs = self.font_size
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(10)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(12)
 
         # 左侧：帧序号
-        num_label = QLabel(f"{self.frame_data.get('frame', self.index + 1)}")
-        num_size = fs + 6  # 序号稍大
-        num_label.setFixedSize(num_size + 8, num_size + 8)
-        num_label.setAlignment(Qt.AlignCenter)
-        num_label.setStyleSheet(
-            f"QLabel {{ background: #313244; border-radius: {num_size // 2 + 4}px; "
-            f"font-weight: bold; font-size: {num_size}px; color: #cdd6f4; }}"
+        num_size = fs + 8
+        self.num_label = QLabel(str(self.frame_data.get("frame", self.index + 1)))
+        self.num_label.setFixedSize(num_size, num_size)
+        self.num_label.setAlignment(Qt.AlignCenter)
+        self.num_label.setStyleSheet(
+            f"QLabel {{ background: #313244; border-radius: {num_size // 2}px; "
+            f"font-weight: bold; font-size: {fs + 3}px; color: #cdd6f4; }}"
         )
-        layout.addWidget(num_label)
+        layout.addWidget(self.num_label, alignment=Qt.AlignTop)
 
-        # 中间：缩略图
-        thumb_size = fs + 43  # 13→56, 15→58, 18→61
+        # 缩略图（可点击放大）
+        thumb_size = fs * 5  # 15→75, 18→90
         self.image_label = QLabel()
         self.image_label.setFixedSize(thumb_size, thumb_size)
         self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setCursor(Qt.PointingHandCursor)
         self.image_label.setStyleSheet(
-            f"background: #11111b; border-radius: 4px; color: #585b70; font-size: {fs}px;"
+            f"background: #11111b; border-radius: 6px; color: #585b70; font-size: {fs}px;"
         )
         self.image_label.setText("无图")
 
@@ -102,327 +108,315 @@ class FrameListItem(QWidget):
             if not pix.isNull():
                 scaled = pix.scaled(thumb_size, thumb_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 self.image_label.setPixmap(scaled)
-                self.image_label.setStyleSheet("background: transparent;")
+                self.image_label.setStyleSheet("background: transparent; border-radius: 6px;")
+                self.image_label.setToolTip("点击放大")
+            else:
+                self.image_label.setToolTip("无图片")
+        else:
+            self.image_label.setToolTip("无图片")
 
-        layout.addWidget(self.image_label)
+        self.image_label.mousePressEvent = self._on_image_click
+        layout.addWidget(self.image_label, alignment=Qt.AlignTop)
 
-        # 右侧：时长+描述
-        info_layout = QVBoxLayout()
-        info_layout.setSpacing(3)
+        # 右侧：所有提示词
+        content = QVBoxLayout()
+        content.setSpacing(6)
+
+        # 时长
         duration = self.frame_data.get("duration", 0)
-        dur_label = QLabel(f"{duration:.1f}s")
-        dur_label.setStyleSheet(f"color: #a6adc8; font-size: {fs}px;")
-        info_layout.addWidget(dur_label)
+        dur_label = QLabel(f"⏱ {duration:.1f}s")
+        dur_label.setStyleSheet(f"color: #a6adc8; font-size: {fs - 1}px; background: transparent;")
+        content.addWidget(dur_label)
 
+        # 图片提示词 EN/CN
+        self._add_field(content, "图片提示词",
+                        self.frame_data.get("image_prompt", ""),
+                        self.frame_data.get("image_prompt_cn", ""))
+
+        # 镜头运动 EN/CN（短字段，同行）
+        self._add_short_field(content, "镜头运动",
+                              self.frame_data.get("camera_motion", ""),
+                              self.frame_data.get("camera_motion_cn", ""))
+
+        # 画面动态 EN/CN（短字段，同行）
+        self._add_short_field(content, "画面动态",
+                              self.frame_data.get("motion_hint", ""),
+                              self.frame_data.get("motion_hint_cn", ""))
+
+        # 画面描述
         desc = self.frame_data.get("description", "")
-        desc_label = QLabel(desc)
-        desc_label.setWordWrap(True)
-        desc_label.setStyleSheet(f"font-size: {fs}px; color: #a6adc8;")
-        desc_label.setMaximumWidth(180)
-        info_layout.addWidget(desc_label)
+        if desc:
+            desc_frame = QFrame()
+            desc_frame.setStyleSheet("QFrame { background: #1e1e2e; border-radius: 4px; }")
+            desc_layout = QVBoxLayout(desc_frame)
+            desc_layout.setContentsMargins(8, 4, 8, 4)
+            desc_layout.setSpacing(2)
+            desc_title = QLabel("画面描述")
+            desc_title.setStyleSheet(f"font-size: {fs - 3}px; color: #585b70; font-weight: bold; background: transparent;")
+            desc_layout.addWidget(desc_title)
+            desc_text = QLabel(desc)
+            desc_text.setWordWrap(True)
+            desc_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            desc_text.setStyleSheet(f"font-size: {fs}px; color: #a6adc8; background: transparent;")
+            desc_layout.addWidget(desc_text)
+            content.addWidget(desc_frame)
 
-        layout.addLayout(info_layout, stretch=1)
+        content.addStretch()
+        layout.addLayout(content, stretch=1)
+
+    def _add_field(self, parent_layout, title, en_text, cn_text):
+        """添加长字段区域（EN/CN 各占多行）"""
+        fs = self.font_size
+        section = QFrame()
+        section.setStyleSheet("QFrame { background: #1e1e2e; border-radius: 4px; }")
+        sl = QVBoxLayout(section)
+        sl.setContentsMargins(8, 4, 8, 4)
+        sl.setSpacing(2)
+
+        title_label = QLabel(title)
+        title_label.setStyleSheet(f"font-size: {fs - 3}px; color: #585b70; font-weight: bold; background: transparent;")
+        sl.addWidget(title_label)
+
+        if en_text:
+            en_label = QLabel(f"EN")
+            en_label.setStyleSheet(f"font-size: {fs - 3}px; color: #585b70; font-weight: bold; background: transparent;")
+            sl.addWidget(en_label)
+            en_content = QLabel(en_text)
+            en_content.setWordWrap(True)
+            en_content.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            en_content.setStyleSheet(f"font-size: {fs}px; color: #cdd6f4; background: transparent;")
+            sl.addWidget(en_content)
+
+        if cn_text:
+            cn_label = QLabel(f"CN")
+            cn_label.setStyleSheet(f"font-size: {fs - 3}px; color: #585b70; font-weight: bold; background: transparent;")
+            sl.addWidget(cn_label)
+            cn_content = QLabel(cn_text)
+            cn_content.setWordWrap(True)
+            cn_content.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            cn_content.setStyleSheet(f"font-size: {fs}px; color: #a6adc8; background: transparent;")
+            sl.addWidget(cn_content)
+
+        if not en_text and not cn_text:
+            empty = QLabel("—")
+            empty.setStyleSheet(f"font-size: {fs}px; color: #585b70; background: transparent;")
+            sl.addWidget(empty)
+
+        parent_layout.addWidget(section)
+
+    def _add_short_field(self, parent_layout, title, en_text, cn_text):
+        """添加短字段（EN/CN 同行）"""
+        fs = self.font_size
+        section = QFrame()
+        section.setStyleSheet("QFrame { background: #1e1e2e; border-radius: 4px; }")
+        sl = QVBoxLayout(section)
+        sl.setContentsMargins(8, 4, 8, 4)
+        sl.setSpacing(2)
+
+        title_label = QLabel(title)
+        title_label.setStyleSheet(f"font-size: {fs - 3}px; color: #585b70; font-weight: bold; background: transparent;")
+        sl.addWidget(title_label)
+
+        # EN 和 CN 同行
+        line = QLabel()
+        parts = []
+        if en_text:
+            parts.append(f'<span style="color:#585b70; font-size:{fs-3}px; font-weight:bold;">EN </span>'
+                         f'<span style="color:#cdd6f4; font-size:{fs}px;">{en_text}</span>')
+        if cn_text:
+            parts.append(f'<span style="color:#585b70; font-size:{fs-3}px; font-weight:bold;">  CN </span>'
+                         f'<span style="color:#a6adc8; font-size:{fs}px;">{cn_text}</span>')
+        if parts:
+            line.setText("&nbsp;&nbsp;".join(parts))
+            line.setTextFormat(Qt.RichText)
+            line.setWordWrap(True)
+            line.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        else:
+            line.setText("—")
+            line.setStyleSheet(f"font-size: {fs}px; color: #585b70; background: transparent;")
+        sl.addWidget(line)
+
+        parent_layout.addWidget(section)
+
+    def _update_style(self):
+        if self.selected:
+            self.setStyleSheet(
+                "FrameCard { border: 2px solid #89b4fa; border-radius: 8px; background: #181825; }"
+            )
+        else:
+            self.setStyleSheet(
+                "FrameCard { border: 2px solid #313244; border-radius: 8px; background: #181825; }"
+            )
+
+    def set_selected(self, selected: bool):
+        self.selected = selected
+        self._update_style()
+
+    def update_image(self, image_path: str):
+        """更新图片"""
+        self.frame_data["image_path"] = image_path
+        thumb_size = self.font_size * 5
+        pix = QPixmap(image_path)
+        if not pix.isNull():
+            scaled = pix.scaled(thumb_size, thumb_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.image_label.setPixmap(scaled)
+            self.image_label.setStyleSheet("background: transparent; border-radius: 6px;")
+            self.image_label.setToolTip("点击放大")
+
+    def _on_image_click(self, event):
+        """点击缩略图放大"""
+        img_path = self.frame_data.get("image_path")
+        if img_path and Path(img_path).exists():
+            self.image_clicked.emit(img_path)
+
+    def mousePressEvent(self, event):
+        """点击卡片选中"""
+        # 如果点的是图片区域，不触发选中（图片有自己的处理）
+        pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+        if self.image_label.geometry().contains(pos):
+            return
+        self.clicked.emit(self.index)
+        super().mousePressEvent(event)
 
 
 class StoryboardView(QWidget):
-    """分镜预览视图 - 左侧帧列表 + 右侧详情"""
+    """分镜预览视图 — 纵向卡片流，上下滚动浏览所有帧"""
 
     frame_selected = Signal(int)  # 选中帧变化
-    image_clicked = Signal(str)   # 点击图片（传路径）
 
     def __init__(self):
         super().__init__()
         self.frames = []
-        self.list_items = []
+        self.cards = []
         self.selected_index = -1
         self.font_size = _load_font_size()
         self._init_ui()
 
     def _init_ui(self):
-        main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(8)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # ===== 左侧：帧列表 =====
-        left_frame = QFrame()
-        left_frame.setFixedWidth(280)
-        left_frame.setStyleSheet("QFrame { background: #181825; border-radius: 6px; }")
-        left_layout = QVBoxLayout(left_frame)
-        left_layout.setContentsMargins(8, 8, 8, 8)
-        left_layout.setSpacing(6)
-
-        title = QLabel("分镜列表")
-        title.setStyleSheet(f"font-size: {self.font_size + 2}px; font-weight: bold; padding: 2px; color: #cdd6f4;")
-        left_layout.addWidget(title)
-
-        self.list_widget = QListWidget()
-        self.list_widget.setStyleSheet("""
-            QListWidget {
-                background: #11111b;
-                border: 1px solid #313244;
-                border-radius: 4px;
-                color: #cdd6f4;
-            }
-            QListWidget::item {
-                padding: 4px;
-                border-radius: 4px;
-            }
-            QListWidget::item:selected {
-                background: #313244;
-                border: 1px solid #89b4fa;
-            }
-            QListWidget::item:hover {
-                background: #1e1e2e;
-            }
-        """)
-        self.list_widget.setSpacing(4)
-        self.list_widget.currentRowChanged.connect(self._on_row_changed)
-        left_layout.addWidget(self.list_widget)
-
-        main_layout.addWidget(left_frame)
-
-        # ===== 右侧：详情区域 =====
-        right_frame = QFrame()
-        right_frame.setStyleSheet("QFrame { background: #181825; border-radius: 6px; }")
-        right_layout = QVBoxLayout(right_frame)
-        right_layout.setContentsMargins(12, 12, 12, 12)
-        right_layout.setSpacing(10)
-
-        # 帧标题
-        self.frame_title = QLabel("选择一帧查看详情")
-        self.frame_title.setStyleSheet(f"font-size: {self.font_size + 4}px; font-weight: bold; color: #89b4fa;")
-        right_layout.addWidget(self.frame_title)
-
-        # 图片预览区（可点击放大）
-        preview_size = 256
-        self.preview_label = QLabel()
-        self.preview_label.setFixedSize(preview_size, preview_size)
-        self.preview_label.setAlignment(Qt.AlignCenter)
-        self.preview_label.setStyleSheet(
-            "background: #11111b; border-radius: 6px; color: #585b70; font-size: 12px;"
-        )
-        self.preview_label.setText("暂无图片")
-        self.preview_label.setCursor(Qt.PointingHandCursor)
-        self.preview_label.mousePressEvent = self._on_preview_click
-        right_layout.addWidget(self.preview_label, alignment=Qt.AlignCenter)
-
-        # 滚动区域包裹提示词
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("""
-            QScrollArea { border: none; background: transparent; }
-            QScrollBar:vertical { background: #181825; width: 10px; border: none; }
-            QScrollBar::handle:vertical { background: #45475a; border-radius: 4px; min-height: 30px; }
+        # 滚动区域
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setStyleSheet("""
+            QScrollArea { border: none; background: #1e1e2e; }
+            QScrollBar:vertical { background: #181825; width: 12px; border: none; }
+            QScrollBar::handle:vertical { background: #45475a; border-radius: 5px; min-height: 40px; }
             QScrollBar::handle:vertical:hover { background: #585b70; }
-            QScrollBar::add-line, QScrollBar::sub-line { border: none; background: none; }
+            QScrollBar::add-line, QScrollBar::sub-line { border: none; background: none; height: 0; }
         """)
 
-        scroll_content = QWidget()
-        scroll_content.setStyleSheet("background: transparent;")
-        scroll_content_layout = QVBoxLayout(scroll_content)
-        scroll_content_layout.setContentsMargins(0, 0, 0, 0)
-        scroll_content_layout.setSpacing(10)
+        self.container = QWidget()
+        self.container.setStyleSheet("background: #1e1e2e;")
+        self.container_layout = QVBoxLayout(self.container)
+        self.container_layout.setContentsMargins(10, 10, 10, 10)
+        self.container_layout.setSpacing(8)
 
-        # 提示词区域
-        self._field_widgets = {}
-        self._add_prompt_section(scroll_content_layout, "图片提示词", "image_prompt")
-        self._add_prompt_section(scroll_content_layout, "镜头运动", "camera_motion")
-        self._add_prompt_section(scroll_content_layout, "画面动态", "motion_hint")
-        self._add_prompt_section(scroll_content_layout, "画面描述", "description")
+        # 空状态
+        self.empty_label = QLabel("点击「生成分镜」开始创建分镜脚本")
+        self.empty_label.setStyleSheet(
+            f"color: #585b70; font-size: {self.font_size + 2}px; padding: 60px;"
+        )
+        self.empty_label.setAlignment(Qt.AlignCenter)
+        self.container_layout.addWidget(self.empty_label)
 
-        scroll_content_layout.addStretch()
-        scroll.setWidget(scroll_content)
-        right_layout.addWidget(scroll, stretch=1)
-
-        main_layout.addWidget(right_frame, stretch=1)
-
-    def _add_prompt_section(self, parent_layout, title, field_key):
-        """添加一个提示词区域（标题+EN+CN）"""
-        fs = self.font_size
-        section = QFrame()
-        section.setStyleSheet("""
-            QFrame { background: #11111b; border-radius: 6px; border: 1px solid #313244; }
-        """)
-        section_layout = QVBoxLayout(section)
-        section_layout.setContentsMargins(10, 8, 10, 8)
-        section_layout.setSpacing(4)
-
-        header = QLabel(title)
-        header.setStyleSheet(f"font-weight: bold; font-size: {fs + 1}px; color: #89b4fa;")
-        section_layout.addWidget(header)
-
-        # 英文
-        en_label = QLabel("EN")
-        en_label.setStyleSheet(f"font-size: {fs - 2}px; color: #585b70; font-weight: bold;")
-        section_layout.addWidget(en_label)
-
-        en_text = QLabel()
-        en_text.setWordWrap(True)
-        en_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        en_text.setStyleSheet(f"font-size: {fs}px; color: #cdd6f4; background: transparent;")
-        en_text.setText("—")
-        section_layout.addWidget(en_text)
-
-        # 中文
-        cn_label = QLabel("CN")
-        cn_label.setStyleSheet(f"font-size: {fs - 2}px; color: #585b70; font-weight: bold;")
-        section_layout.addWidget(cn_label)
-
-        cn_text = QLabel()
-        cn_text.setWordWrap(True)
-        cn_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        cn_text.setStyleSheet(f"font-size: {fs}px; color: #cdd6f4; background: transparent;")
-        cn_text.setText("—")
-        section_layout.addWidget(cn_text)
-
-        parent_layout.addWidget(section)
-        self._field_widgets[field_key] = (en_text, cn_text)
+        self.container_layout.addStretch()
+        self.scroll.setWidget(self.container)
+        layout.addWidget(self.scroll)
 
     def set_frames(self, frames: list):
         """设置分镜数据"""
-        self.list_widget.clear()
-        self.list_items.clear()
-        self.frames = frames
+        # 清空旧卡片
+        for card in self.cards:
+            card.deleteLater()
+        self.cards.clear()
+
+        # 移除空状态
+        if self.container_layout.count() > 0:
+            item = self.container_layout.takeAt(0)
+            if item.widget() == self.empty_label:
+                pass  # 已移除
+            else:
+                # 放回去
+                self.container_layout.insertItem(0, item)
+
+        # 清空容器布局
+        while self.container_layout.count():
+            item = self.container_layout.takeAt(0)
+            w = item.widget()
+            if w and w != self.empty_label:
+                w.deleteLater()
 
         if not frames:
-            self.list_widget.addItem("（无分镜数据）")
+            self.container_layout.addWidget(self.empty_label)
+            self.container_layout.addStretch()
             return
 
-        item_height = self.font_size + 63  # 13→76, 16→79, 18→81
+        self.frames = frames
         for i, frame in enumerate(frames):
-            item_widget = FrameListItem(frame, i, font_size=self.font_size)
-            list_item = QListWidgetItem()
-            list_item.setSizeHint(QSize(260, item_height))
-            self.list_widget.addItem(list_item)
-            self.list_widget.setItemWidget(list_item, item_widget)
-            self.list_items.append(list_item)
+            card = FrameCard(frame, i, font_size=self.font_size)
+            card.clicked.connect(self._on_card_clicked)
+            card.image_clicked.connect(self._on_image_clicked)
+            self.container_layout.addWidget(card)
+            self.cards.append(card)
 
+        self.container_layout.addStretch()
+
+        # 默认选中第一帧
         if frames:
-            self.list_widget.setCurrentRow(0)
+            self._on_card_clicked(0)
+
+    def _on_card_clicked(self, index: int):
+        """卡片点击选中"""
+        self.selected_index = index
+        for i, card in enumerate(self.cards):
+            card.set_selected(i == index)
+        self.frame_selected.emit(index)
+
+    def _on_image_clicked(self, image_path: str):
+        """图片点击放大"""
+        if image_path and Path(image_path).exists():
+            dlg = ImagePreviewDialog(image_path, self)
+            dlg.exec()
 
     def reload_font_size(self):
         """重新加载字体大小并刷新视图"""
         self.font_size = _load_font_size()
-        # 保存当前选中
         prev_index = self.selected_index
-        # 重建整个 UI
-        # 清除旧布局
-        old_layout = self.layout()
-        if old_layout:
-            while old_layout.count():
-                item = old_layout.takeAt(0)
-                widget = item.widget()
-                if widget:
-                    widget.deleteLater()
-                else:
-                    sub = item.layout()
-                    if sub:
-                        self._clear_layout(sub)
-            old_layout.invalidate()
-        self._field_widgets = {}
-        self.list_items = []
-        self._init_ui()
-        # 恢复数据
-        if self.frames:
-            self.set_frames(self.frames)
-            if 0 <= prev_index < len(self.frames):
-                self.list_widget.setCurrentRow(prev_index)
+        # 重建卡片
+        frames = self.frames
+        # 清空
+        for card in self.cards:
+            card.deleteLater()
+        self.cards.clear()
+        while self.container_layout.count():
+            item = self.container_layout.takeAt(0)
+            w = item.widget()
+            if w and w != self.empty_label:
+                w.deleteLater()
 
-    def _clear_layout(self, layout):
-        while layout.count():
-            item = layout.takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
-            else:
-                sub = item.layout()
-                if sub:
-                    self._clear_layout(sub)
-
-    def _on_row_changed(self, row: int):
-        """列表选中行变化"""
-        if row < 0 or row >= len(self.frames):
+        if not frames:
+            self.container_layout.addWidget(self.empty_label)
+            self.container_layout.addStretch()
             return
-        self.selected_index = row
-        self.frame_selected.emit(row)
-        self._update_detail(row)
 
-    def _update_detail(self, index: int):
-        """更新右侧详情"""
-        if index < 0 or index >= len(self.frames):
-            return
-        frame = self.frames[index]
+        self.frames = frames
+        for i, frame in enumerate(frames):
+            card = FrameCard(frame, i, font_size=self.font_size)
+            card.clicked.connect(self._on_card_clicked)
+            card.image_clicked.connect(self._on_image_clicked)
+            self.container_layout.addWidget(card)
+            self.cards.append(card)
 
-        frame_num = frame.get("frame", index + 1)
-        duration = frame.get("duration", 0)
-        self.frame_title.setText(f"第 {frame_num} 帧  ·  {duration:.1f}s")
+        self.container_layout.addStretch()
 
-        # 图片预览
-        img_path = frame.get("image_path")
-        if img_path and Path(img_path).exists():
-            pix = QPixmap(img_path)
-            if not pix.isNull():
-                scaled = pix.scaled(256, 256, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                self.preview_label.setPixmap(scaled)
-                self.preview_label.setStyleSheet("background: transparent; border-radius: 6px;")
-            else:
-                self._set_no_image()
-        else:
-            self._set_no_image()
-
-        # 提示词
-        field_pairs = [
-            ("image_prompt", "image_prompt_cn"),
-            ("camera_motion", "camera_motion_cn"),
-            ("motion_hint", "motion_hint_cn"),
-        ]
-        for en_key, cn_key in field_pairs:
-            en_text, cn_text = self._field_widgets.get(en_key, (None, None))
-            if en_text:
-                en_text.setText(frame.get(en_key, "—") or "—")
-            if cn_text:
-                cn_text.setText(frame.get(cn_key, "—") or "—")
-
-        # description 只有中文
-        en_text, cn_text = self._field_widgets.get("description", (None, None))
-        if en_text:
-            en_text.setText("—")
-        if cn_text:
-            cn_text.setText(frame.get("description", "—") or "—")
-
-    def _set_no_image(self):
-        self.preview_label.setText("暂无图片")
-        self.preview_label.setPixmap(QPixmap())
-        self.preview_label.setStyleSheet(
-            "background: #11111b; border-radius: 6px; color: #585b70; font-size: 12px;"
-        )
-
-    def _on_preview_click(self, event):
-        """点击预览图，放大显示"""
-        if self.selected_index < 0 or self.selected_index >= len(self.frames):
-            return
-        img_path = self.frames[self.selected_index].get("image_path")
-        if img_path and Path(img_path).exists():
-            dlg = ImagePreviewDialog(img_path, self)
-            dlg.exec()
+        if 0 <= prev_index < len(frames):
+            self._on_card_clicked(prev_index)
 
     def update_frame_image(self, index: int, image_path: str):
         """更新某帧的图片"""
-        if 0 <= index < len(self.frames):
+        if 0 <= index < len(self.cards):
             self.frames[index]["image_path"] = image_path
-            if index < len(self.list_items):
-                item = self.list_items[index]
-                widget = self.list_widget.itemWidget(item)
-                if widget and hasattr(widget, "image_label"):
-                    pix = QPixmap(image_path)
-                    if not pix.isNull():
-                        thumb_size = self.font_size + 43
-                        scaled = pix.scaled(thumb_size, thumb_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                        widget.image_label.setPixmap(scaled)
-                        widget.image_label.setStyleSheet("background: transparent;")
-            if index == self.selected_index:
-                pix = QPixmap(image_path)
-                if not pix.isNull():
-                    scaled = pix.scaled(256, 256, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                    self.preview_label.setPixmap(scaled)
-                    self.preview_label.setStyleSheet("background: transparent; border-radius: 6px;")
+            self.cards[index].update_image(image_path)

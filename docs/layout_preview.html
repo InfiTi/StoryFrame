@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1e1e2e; color: #cdd6f4; font-family: 'Microsoft YaHei', sans-serif; padding: 30px; }
+h2 { color: #89b4fa; margin-bottom: 20px; font-size: 18px; }
+h3 { color: #a6e3a1; margin: 15px 0 10px; font-size: 15px; }
+.scheme { background: #181825; border: 1px solid #45475a; border-radius: 8px; padding: 20px; margin-bottom: 30px; }
+.frame-row { display: flex; gap: 12px; background: #11111b; border-radius: 6px; border: 1px solid #313244; padding: 10px; margin-bottom: 8px; align-items: flex-start; }
+.frame-num { background: #313244; border-radius: 16px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; color: #cdd6f4; flex-shrink: 0; }
+.frame-thumb { width: 64px; height: 64px; background: #313244; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #585b70; flex-shrink: 0; }
+.frame-content { flex: 1; min-width: 0; }
+.frame-section { margin-bottom: 4px; }
+.field-label { font-size: 10px; color: #585b70; font-weight: bold; }
+.field-en { font-size: 12px; color: #cdd6f4; }
+.field-cn { font-size: 12px; color: #a6adc8; }
+.scroll-hint { text-align: center; color: #585b70; font-size: 11px; padding: 8px; }
+
+/* 方案B: 卡片网格 */
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.card { background: #11111b; border: 1px solid #313244; border-radius: 6px; padding: 10px; }
+.card-img { width: 100%; height: 80px; background: #313244; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #585b70; margin-bottom: 6px; }
+.card-title { font-weight: bold; font-size: 13px; color: #89b4fa; margin-bottom: 4px; }
+
+/* 方案C: 紧凑行 */
+.compact-row { display: flex; gap: 8px; background: #11111b; border-radius: 4px; border: 1px solid #313244; padding: 6px 10px; margin-bottom: 4px; align-items: center; }
+.compact-num { background: #313244; border-radius: 12px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; flex-shrink: 0; }
+.compact-thumb { width: 36px; height: 36px; background: #313244; border-radius: 3px; flex-shrink: 0; }
+.compact-text { flex: 1; font-size: 11px; color: #a6adc8; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.compact-en { color: #cdd6f4; }
+</style>
+</head>
+<body>
+
+<h2>分镜列表布局方案示意</h2>
+
+<!-- 方案A -->
+<div class="scheme">
+<h3>方案 A：纵向卡片流（推荐）</h3>
+<p style="color:#a6adc8; font-size:12px; margin-bottom:12px;">每帧一行：序号 + 缩略图 + 所有提示词（EN/CN），上下滚动浏览，无需点击</p>
+
+<div class="frame-row">
+  <div class="frame-num">1</div>
+  <div class="frame-thumb">图片</div>
+  <div class="frame-content">
+    <div class="frame-section">
+      <span class="field-label">图片提示词 EN:</span>
+      <div class="field-en">Macro shot of golden crispy mango macaron, flaky texture, soft studio lighting...</div>
+    </div>
+    <div class="frame-section">
+      <span class="field-label">图片提示词 CN:</span>
+      <div class="field-cn">微距镜头拍摄金色酥脆芒果马卡龙，层次分明，柔和工作室光线...</div>
+    </div>
+    <div class="frame-section">
+      <span class="field-label">镜头 EN:</span><span class="field-en">slow dolly in</span>
+      &nbsp;<span class="field-label">CN:</span><span class="field-cn">缓慢推近</span>
+      &nbsp;<span class="field-label">动态 EN:</span><span class="field-en">crumbs falling</span>
+      &nbsp;<span class="field-label">CN:</span><span class="field-cn">碎屑掉落</span>
+    </div>
+  </div>
+</div>
+
+<div class="frame-row">
+  <div class="frame-num">2</div>
+  <div class="frame-thumb">图片</div>
+  <div class="frame-content">
+    <div class="frame-section">
+      <span class="field-label">图片提示词 EN:</span>
+      <div class="field-en">Close-up of mango macaron cross-section, vibrant orange filling, creamy texture...</div>
+    </div>
+    <div class="frame-section">
+      <span class="field-label">图片提示词 CN:</span>
+      <div class="field-cn">芒果马卡龙横截面特写，鲜艳橙色夹心，奶油质感...</div>
+    </div>
+    <div class="frame-section">
+      <span class="field-label">镜头 EN:</span><span class="field-en">macro push-in</span>
+      &nbsp;<span class="field-label">CN:</span><span class="field-cn">微距推进</span>
+      &nbsp;<span class="field-label">动态 EN:</span><span class="field-en">filling oozing</span>
+      &nbsp;<span class="field-label">CN:</span><span class="field-cn">夹心溢出</span>
+    </div>
+  </div>
+</div>
+
+<div class="frame-row">
+  <div class="frame-num">3</div>
+  <div class="frame-thumb">图片</div>
+  <div class="frame-content">
+    <div class="frame-section">
+      <span class="field-label">图片提示词 EN:</span>
+      <div class="field-en">Overhead shot of macarons arranged on dark slate, dramatic side lighting...</div>
+    </div>
+    <div class="frame-section">
+      <span class="field-label">图片提示词 CN:</span>
+      <div class="field-cn">俯拍马卡龙排列在深色石板上，戏剧性侧光...</div>
+    </div>
+    <div class="frame-section">
+      <span class="field-label">镜头 EN:</span><span class="field-en">gentle orbit</span>
+      &nbsp;<span class="field-label">CN:</span><span class="field-cn">缓慢环绕</span>
+    </div>
+  </div>
+</div>
+
+<div class="scroll-hint">⬇ 上下滚动查看更多帧（第4、5帧...）</div>
+</div>
+
+<!-- 方案B -->
+<div class="scheme">
+<h3>方案 B：双列卡片网格</h3>
+<p style="color:#a6adc8; font-size:12px; margin-bottom:12px;">两列并排，每张卡片包含图片+提示词，适合帧数较多时</p>
+
+<div class="grid">
+  <div class="card">
+    <div class="card-img">图片 1</div>
+    <div class="card-title">第1帧 · 3.0s</div>
+    <div class="field-label">EN:</div><div class="field-en">Macro shot of golden crispy mango macaron...</div>
+    <div class="field-label">CN:</div><div class="field-cn">微距拍摄金色酥脆芒果马卡龙...</div>
+  </div>
+  <div class="card">
+    <div class="card-img">图片 2</div>
+    <div class="card-title">第2帧 · 3.0s</div>
+    <div class="field-label">EN:</div><div class="field-en">Close-up of macaron cross-section...</div>
+    <div class="field-label">CN:</div><div class="field-cn">马卡龙横截面特写...</div>
+  </div>
+  <div class="card">
+    <div class="card-img">图片 3</div>
+    <div class="card-title">第3帧 · 3.0s</div>
+    <div class="field-label">EN:</div><div class="field-en">Overhead shot on dark slate...</div>
+    <div class="field-label">CN:</div><div class="field-cn">俯拍深色石板...</div>
+  </div>
+  <div class="card">
+    <div class="card-img">图片 4</div>
+    <div class="card-title">第4帧 · 3.0s</div>
+    <div class="field-label">EN:</div><div class="field-en">Slow motion falling crumbs...</div>
+    <div class="field-label">CN:</div><div class="field-cn">慢动作掉落碎屑...</div>
+  </div>
+</div>
+<div class="scroll-hint">⬇ 上下滚动查看更多</div>
+</div>
+
+<!-- 方案C -->
+<div class="scheme">
+<h3>方案 C：紧凑列表</h3>
+<p style="color:#a6adc8; font-size:12px; margin-bottom:12px;">每帧一行非常紧凑，只显示英文提示词摘要，点击展开详情</p>
+
+<div class="compact-row">
+  <div class="compact-num">1</div>
+  <div class="compact-thumb"></div>
+  <div class="compact-text compact-en">Macro shot of golden crispy mango macaron, flaky texture...</div>
+</div>
+<div class="compact-row">
+  <div class="compact-num">2</div>
+  <div class="compact-thumb"></div>
+  <div class="compact-text compact-en">Close-up of mango macaron cross-section, vibrant orange...</div>
+</div>
+<div class="compact-row">
+  <div class="compact-num">3</div>
+  <div class="compact-thumb"></div>
+  <div class="compact-text compact-en">Overhead shot of macarons arranged on dark slate...</div>
+</div>
+<div class="compact-row">
+  <div class="compact-num">4</div>
+  <div class="compact-thumb"></div>
+  <div class="compact-text compact-en">Slow motion falling crumbs, golden particles...</div>
+</div>
+<div class="scroll-hint">⬇ 上下滚动 · 点击某行展开完整中英文提示词</div>
+</div>
+
+</body>
+</html>
