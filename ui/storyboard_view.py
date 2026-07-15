@@ -91,10 +91,12 @@ class FrameCard(QFrame):
         )
         layout.addWidget(self.num_label, alignment=Qt.AlignTop)
 
-        # 缩略图（可点击放大）
-        thumb_size = fs * 5  # 15→75, 18→90
+        # 缩略图（可点击放大）— 宽度固定，高度跟随内容
+        thumb_w = fs * 8  # 15→120, 18→144
+        self.thumb_w = thumb_w
         self.image_label = QLabel()
-        self.image_label.setFixedSize(thumb_size, thumb_size)
+        self.image_label.setFixedWidth(thumb_w)
+        self.image_label.setMinimumHeight(thumb_w)
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setCursor(Qt.PointingHandCursor)
         self.image_label.setStyleSheet(
@@ -106,8 +108,10 @@ class FrameCard(QFrame):
         if img_path and Path(img_path).exists():
             pix = QPixmap(img_path)
             if not pix.isNull():
-                scaled = pix.scaled(thumb_size, thumb_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                # 等比缩放，宽度对齐 thumb_w
+                scaled = pix.scaledToWidth(thumb_w, Qt.SmoothTransformation)
                 self.image_label.setPixmap(scaled)
+                self.image_label.setFixedHeight(scaled.height())
                 self.image_label.setStyleSheet("background: transparent; border-radius: 6px;")
                 self.image_label.setToolTip("点击放大")
             else:
@@ -255,11 +259,11 @@ class FrameCard(QFrame):
     def update_image(self, image_path: str):
         """更新图片"""
         self.frame_data["image_path"] = image_path
-        thumb_size = self.font_size * 5
         pix = QPixmap(image_path)
         if not pix.isNull():
-            scaled = pix.scaled(thumb_size, thumb_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            scaled = pix.scaledToWidth(self.thumb_w, Qt.SmoothTransformation)
             self.image_label.setPixmap(scaled)
+            self.image_label.setFixedHeight(scaled.height())
             self.image_label.setStyleSheet("background: transparent; border-radius: 6px;")
             self.image_label.setToolTip("点击放大")
 
