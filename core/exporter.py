@@ -32,17 +32,29 @@ def export_markdown(storyboard: Storyboard, output_path: str):
             "",
             f"**画面描述**：{frame.description}",
             "",
-            f"**图片提示词**：",
+            f"**图片提示词（EN）**：",
             f"```\n{frame.image_prompt}\n```",
             "",
-            f"**镜头运动**：{frame.camera_motion}",
-            "",
         ])
-        if frame.motion_hint:
+        if frame.image_prompt_cn:
             lines.extend([
-                f"**画面动态**：{frame.motion_hint}",
+                f"**图片提示词（CN）**：",
+                f"```\n{frame.image_prompt_cn}\n```",
                 "",
             ])
+        lines.extend([
+            f"**镜头运动（EN）**：{frame.camera_motion}",
+            "",
+        ])
+        if frame.camera_motion_cn:
+            lines.append(f"**镜头运动（CN）**：{frame.camera_motion_cn}")
+            lines.append("")
+        if frame.motion_hint:
+            lines.append(f"**画面动态（EN）**：{frame.motion_hint}")
+            lines.append("")
+        if frame.motion_hint_cn:
+            lines.append(f"**画面动态（CN）**：{frame.motion_hint_cn}")
+            lines.append("")
         if frame.image_path:
             lines.append(f"![第{frame.frame}帧]({frame.image_path})")
             lines.append("")
