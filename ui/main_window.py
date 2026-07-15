@@ -591,6 +591,8 @@ class MainWindow(QMainWindow):
         if dlg.exec():
             self.config = load_config()
             self.status_label.setText("设置已保存")
+            # 刷新分镜视图字体大小
+            self.storyboard_view.reload_font_size()
         self._load_product_list()
 
 

@@ -170,6 +170,18 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(cache_group)
 
+        # === 界面设置 ===
+        ui_group = QGroupBox("界面设置")
+        ui_form = QFormLayout(ui_group)
+
+        self.ui_font_size = QSpinBox()
+        self.ui_font_size.setRange(10, 24)
+        self.ui_font_size.setValue(self.config.get("ui", {}).get("font_size", 13))
+        self.ui_font_size.setSuffix(" px")
+        ui_form.addRow("字体大小：", self.ui_font_size)
+
+        layout.addWidget(ui_group)
+
         # === 按钮 ===
         buttons = QDialogButtonBox(
             QDialogButtonBox.Save | QDialogButtonBox.Cancel
@@ -209,6 +221,10 @@ class SettingsDialog(QDialog):
         if "cache" not in self.config:
             self.config["cache"] = {}
         self.config["cache"]["max_versions"] = self.cache_max.value()
+
+        if "ui" not in self.config:
+            self.config["ui"] = {}
+        self.config["ui"]["font_size"] = self.ui_font_size.value()
 
         save_config(self.config)
         self.accept()

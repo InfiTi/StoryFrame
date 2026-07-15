@@ -2,6 +2,7 @@
 
 布局：左侧帧列表（垂直可滚动）+ 右侧提示词详情面板
 点击缩略图弹出大图预览。
+字体大小可通过 config["ui"]["font_size"] 配置。
 """
 
 from PySide6.QtWidgets import (
@@ -10,8 +11,21 @@ from PySide6.QtWidgets import (
     QListWidget, QListWidgetItem, QDialog, QGridLayout,
 )
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QPixmap, QIcon
+from PySide6.QtGui import QPixmap, QIcon, QFont
 from pathlib import Path
+import json
+import os
+
+
+def _load_font_size() -> int:
+    """从 config.json 读取字体大小，默认 13"""
+    try:
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.json")
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        return cfg.get("ui", {}).get("font_size", 13)
+    except Exception:
+        return 13
 
 
 class ImagePreviewDialog(QDialog):
@@ -29,7 +43,6 @@ class ImagePreviewDialog(QDialog):
         label = QLabel()
         pix = QPixmap(image_path)
         if not pix.isNull():
-            # 获取屏幕可用尺寸，图片按比例缩放到 80% 屏幕
             screen = self.screen()
             if screen:
                 avail = screen.availableGeometry()
@@ -49,33 +62,37 @@ class ImagePreviewDialog(QDialog):
 class FrameListItem(QWidget):
     """帧列表项 - 显示序号+缩略图+描述"""
 
-    def __init__(self, frame_data: dict, index: int):
+    def __init__(self, frame_data: dict, index: int, font_size: int = 13):
         super().__init__()
         self.index = index
         self.frame_data = frame_data
+        self.font_size = font_size
         self._init_ui()
 
     def _init_ui(self):
+        fs = self.font_size
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(10)
 
         # 左侧：帧序号
         num_label = QLabel(f"{self.frame_data.get('frame', self.index + 1)}")
-        num_label.setFixedSize(36, 36)
+        num_size = fs + 6  # 序号稍大
+        num_label.setFixedSize(num_size + 8, num_size + 8)
         num_label.setAlignment(Qt.AlignCenter)
         num_label.setStyleSheet(
-            "QLabel { background: #313244; border-radius: 18px; "
-            "font-weight: bold; font-size: 16px; color: #cdd6f4; }"
+            f"QLabel {{ background: #313244; border-radius: {num_size // 2 + 4}px; "
+            f"font-weight: bold; font-size: {num_size}px; color: #cdd6f4; }}"
         )
         layout.addWidget(num_label)
 
         # 中间：缩略图
+        thumb_size = fs + 43  # 13→56, 15→58, 18→61
         self.image_label = QLabel()
-        self.image_label.setFixedSize(56, 56)
+        self.image_label.setFixedSize(thumb_size, thumb_size)
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setStyleSheet(
-            "background: #11111b; border-radius: 4px; color: #585b70; font-size: 12px;"
+            f"background: #11111b; border-radius: 4px; color: #585b70; font-size: {fs}px;"
         )
         self.image_label.setText("无图")
 
@@ -83,7 +100,7 @@ class FrameListItem(QWidget):
         if img_path and Path(img_path).exists():
             pix = QPixmap(img_path)
             if not pix.isNull():
-                scaled = pix.scaled(56, 56, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                scaled = pix.scaled(thumb_size, thumb_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 self.image_label.setPixmap(scaled)
                 self.image_label.setStyleSheet("background: transparent;")
 
@@ -94,13 +111,13 @@ class FrameListItem(QWidget):
         info_layout.setSpacing(3)
         duration = self.frame_data.get("duration", 0)
         dur_label = QLabel(f"{duration:.1f}s")
-        dur_label.setStyleSheet("color: #a6adc8; font-size: 13px;")
+        dur_label.setStyleSheet(f"color: #a6adc8; font-size: {fs}px;")
         info_layout.addWidget(dur_label)
 
         desc = self.frame_data.get("description", "")
         desc_label = QLabel(desc)
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet("font-size: 13px; color: #a6adc8;")
+        desc_label.setStyleSheet(f"font-size: {fs}px; color: #a6adc8;")
         desc_label.setMaximumWidth(180)
         info_layout.addWidget(desc_label)
 
@@ -118,6 +135,7 @@ class StoryboardView(QWidget):
         self.frames = []
         self.list_items = []
         self.selected_index = -1
+        self.font_size = _load_font_size()
         self._init_ui()
 
     def _init_ui(self):
@@ -127,14 +145,14 @@ class StoryboardView(QWidget):
 
         # ===== 左侧：帧列表 =====
         left_frame = QFrame()
-        left_frame.setFixedWidth(260)
+        left_frame.setFixedWidth(280)
         left_frame.setStyleSheet("QFrame { background: #181825; border-radius: 6px; }")
         left_layout = QVBoxLayout(left_frame)
         left_layout.setContentsMargins(8, 8, 8, 8)
         left_layout.setSpacing(6)
 
         title = QLabel("分镜列表")
-        title.setStyleSheet("font-size: 13px; font-weight: bold; padding: 2px; color: #cdd6f4;")
+        title.setStyleSheet(f"font-size: {self.font_size + 2}px; font-weight: bold; padding: 2px; color: #cdd6f4;")
         left_layout.addWidget(title)
 
         self.list_widget = QListWidget()
@@ -172,12 +190,13 @@ class StoryboardView(QWidget):
 
         # 帧标题
         self.frame_title = QLabel("选择一帧查看详情")
-        self.frame_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #89b4fa;")
+        self.frame_title.setStyleSheet(f"font-size: {self.font_size + 4}px; font-weight: bold; color: #89b4fa;")
         right_layout.addWidget(self.frame_title)
 
         # 图片预览区（可点击放大）
+        preview_size = 256
         self.preview_label = QLabel()
-        self.preview_label.setFixedSize(256, 256)
+        self.preview_label.setFixedSize(preview_size, preview_size)
         self.preview_label.setAlignment(Qt.AlignCenter)
         self.preview_label.setStyleSheet(
             "background: #11111b; border-radius: 6px; color: #585b70; font-size: 12px;"
@@ -204,13 +223,11 @@ class StoryboardView(QWidget):
         scroll_content_layout.setContentsMargins(0, 0, 0, 0)
         scroll_content_layout.setSpacing(10)
 
-        # 图片提示词
+        # 提示词区域
+        self._field_widgets = {}
         self._add_prompt_section(scroll_content_layout, "图片提示词", "image_prompt")
-        # 镜头运动
         self._add_prompt_section(scroll_content_layout, "镜头运动", "camera_motion")
-        # 画面动态
         self._add_prompt_section(scroll_content_layout, "画面动态", "motion_hint")
-        # 画面描述
         self._add_prompt_section(scroll_content_layout, "画面描述", "description")
 
         scroll_content_layout.addStretch()
@@ -221,6 +238,7 @@ class StoryboardView(QWidget):
 
     def _add_prompt_section(self, parent_layout, title, field_key):
         """添加一个提示词区域（标题+EN+CN）"""
+        fs = self.font_size
         section = QFrame()
         section.setStyleSheet("""
             QFrame { background: #11111b; border-radius: 6px; border: 1px solid #313244; }
@@ -230,38 +248,34 @@ class StoryboardView(QWidget):
         section_layout.setSpacing(4)
 
         header = QLabel(title)
-        header.setStyleSheet("font-weight: bold; font-size: 12px; color: #89b4fa;")
+        header.setStyleSheet(f"font-weight: bold; font-size: {fs + 1}px; color: #89b4fa;")
         section_layout.addWidget(header)
 
         # 英文
         en_label = QLabel("EN")
-        en_label.setStyleSheet("font-size: 10px; color: #585b70; font-weight: bold;")
+        en_label.setStyleSheet(f"font-size: {fs - 2}px; color: #585b70; font-weight: bold;")
         section_layout.addWidget(en_label)
 
         en_text = QLabel()
         en_text.setWordWrap(True)
         en_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        en_text.setStyleSheet("font-size: 12px; color: #cdd6f4; background: transparent;")
+        en_text.setStyleSheet(f"font-size: {fs}px; color: #cdd6f4; background: transparent;")
         en_text.setText("—")
         section_layout.addWidget(en_text)
 
         # 中文
         cn_label = QLabel("CN")
-        cn_label.setStyleSheet("font-size: 10px; color: #585b70; font-weight: bold;")
+        cn_label.setStyleSheet(f"font-size: {fs - 2}px; color: #585b70; font-weight: bold;")
         section_layout.addWidget(cn_label)
 
         cn_text = QLabel()
         cn_text.setWordWrap(True)
         cn_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        cn_text.setStyleSheet("font-size: 12px; color: #cdd6f4; background: transparent;")
+        cn_text.setStyleSheet(f"font-size: {fs}px; color: #cdd6f4; background: transparent;")
         cn_text.setText("—")
         section_layout.addWidget(cn_text)
 
         parent_layout.addWidget(section)
-
-        # 存引用以便更新
-        if not hasattr(self, '_field_widgets'):
-            self._field_widgets = {}
         self._field_widgets[field_key] = (en_text, cn_text)
 
     def set_frames(self, frames: list):
@@ -274,17 +288,56 @@ class StoryboardView(QWidget):
             self.list_widget.addItem("（无分镜数据）")
             return
 
+        item_height = self.font_size + 63  # 13→76, 16→79, 18→81
         for i, frame in enumerate(frames):
-            item_widget = FrameListItem(frame, i)
+            item_widget = FrameListItem(frame, i, font_size=self.font_size)
             list_item = QListWidgetItem()
-            list_item.setSizeHint(QSize(240, 76))
+            list_item.setSizeHint(QSize(260, item_height))
             self.list_widget.addItem(list_item)
             self.list_widget.setItemWidget(list_item, item_widget)
             self.list_items.append(list_item)
 
-        # 默认选中第一帧
         if frames:
             self.list_widget.setCurrentRow(0)
+
+    def reload_font_size(self):
+        """重新加载字体大小并刷新视图"""
+        self.font_size = _load_font_size()
+        # 保存当前选中
+        prev_index = self.selected_index
+        # 重建整个 UI
+        # 清除旧布局
+        old_layout = self.layout()
+        if old_layout:
+            while old_layout.count():
+                item = old_layout.takeAt(0)
+                widget = item.widget()
+                if widget:
+                    widget.deleteLater()
+                else:
+                    sub = item.layout()
+                    if sub:
+                        self._clear_layout(sub)
+            old_layout.invalidate()
+        self._field_widgets = {}
+        self.list_items = []
+        self._init_ui()
+        # 恢复数据
+        if self.frames:
+            self.set_frames(self.frames)
+            if 0 <= prev_index < len(self.frames):
+                self.list_widget.setCurrentRow(prev_index)
+
+    def _clear_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+            else:
+                sub = item.layout()
+                if sub:
+                    self._clear_layout(sub)
 
     def _on_row_changed(self, row: int):
         """列表选中行变化"""
@@ -300,7 +353,6 @@ class StoryboardView(QWidget):
             return
         frame = self.frames[index]
 
-        # 标题
         frame_num = frame.get("frame", index + 1)
         duration = frame.get("duration", 0)
         self.frame_title.setText(f"第 {frame_num} 帧  ·  {duration:.1f}s")
@@ -358,17 +410,16 @@ class StoryboardView(QWidget):
         """更新某帧的图片"""
         if 0 <= index < len(self.frames):
             self.frames[index]["image_path"] = image_path
-            # 更新列表项缩略图
             if index < len(self.list_items):
                 item = self.list_items[index]
                 widget = self.list_widget.itemWidget(item)
                 if widget and hasattr(widget, "image_label"):
                     pix = QPixmap(image_path)
                     if not pix.isNull():
-                        scaled = pix.scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                        thumb_size = self.font_size + 43
+                        scaled = pix.scaled(thumb_size, thumb_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                         widget.image_label.setPixmap(scaled)
                         widget.image_label.setStyleSheet("background: transparent;")
-            # 如果当前选中的就是这一帧，更新预览
             if index == self.selected_index:
                 pix = QPixmap(image_path)
                 if not pix.isNull():
