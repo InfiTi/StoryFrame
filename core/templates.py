@@ -1,27 +1,39 @@
-"""风格模板定义"""
+"""风格模板定义
 
-from dataclasses import dataclass, field
+模板来源：
+1. 优先从 templates.json 加载（用户可自定义）
+2. 回退到内置默认模板
+"""
+
+import json
+from dataclasses import dataclass, field, asdict
 from typing import List
+from pathlib import Path
+
+TEMPLATES_FILE = Path(__file__).parent.parent / "templates.json"
 
 
 @dataclass
 class StyleTemplate:
     """风格模板"""
-    name: str           # 模板名称（中文）
-    key: str            # 模板标识（英文）
-    description: str    # 模板描述
-    # 图片提示词风格关键词（英文，会拼接到图片提示词中）
+    name: str
+    key: str
+    description: str
     image_style_words: List[str] = field(default_factory=list)
-    # 镜头描述风格关键词（英文，描述镜头运动）
     camera_style_words: List[str] = field(default_factory=list)
-    # 画面节奏描述
     pacing: str = "normal"
-    # 推荐分镜数
     recommended_frames: int = 5
+    bgm: str = ""
+    # 新增：冲击强度（低/中/高）
+    impact_level: str = "中"
+    # 新增：节奏策略
+    pacing_strategy: str = "均匀分配"
+    # 新增：负向排除词（按风格区分）
+    negative_words: str = "no text, no words, no letters, no logo, no watermark, no label, no hands, no people"
 
 
-# 预置风格模板
-TEMPLATES: List[StyleTemplate] = [
+# 内置默认模板
+_DEFAULT_TEMPLATES = [
     StyleTemplate(
         name="高端",
         key="premium",
@@ -37,6 +49,9 @@ TEMPLATES: List[StyleTemplate] = [
         ],
         pacing="slow",
         recommended_frames=5,
+        bgm="古典",
+        impact_level="低",
+        pacing_strategy="均匀分配",
     ),
     StyleTemplate(
         name="升格",
@@ -53,6 +68,9 @@ TEMPLATES: List[StyleTemplate] = [
         ],
         pacing="dramatic",
         recommended_frames=5,
+        bgm="冲击感",
+        impact_level="高",
+        pacing_strategy="慢开场快结尾",
     ),
     StyleTemplate(
         name="慢镜头",
@@ -69,6 +87,9 @@ TEMPLATES: List[StyleTemplate] = [
         ],
         pacing="very_slow",
         recommended_frames=4,
+        bgm="轻柔",
+        impact_level="低",
+        pacing_strategy="均匀分配",
     ),
     StyleTemplate(
         name="超近距离",
@@ -85,6 +106,9 @@ TEMPLATES: List[StyleTemplate] = [
         ],
         pacing="slow",
         recommended_frames=6,
+        bgm="清新",
+        impact_level="中",
+        pacing_strategy="均匀分配",
     ),
     StyleTemplate(
         name="日系清新",
@@ -101,6 +125,9 @@ TEMPLATES: List[StyleTemplate] = [
         ],
         pacing="normal",
         recommended_frames=5,
+        bgm="清新",
+        impact_level="低",
+        pacing_strategy="均匀分配",
     ),
     StyleTemplate(
         name="国潮",
@@ -117,6 +144,10 @@ TEMPLATES: List[StyleTemplate] = [
         ],
         pacing="fast",
         recommended_frames=5,
+        bgm="国潮",
+        impact_level="高",
+        pacing_strategy="前紧后松",
+        negative_words="no text, no words, no letters, no logo, no watermark, no label",
     ),
     StyleTemplate(
         name="活力动感",
@@ -133,6 +164,9 @@ TEMPLATES: List[StyleTemplate] = [
         ],
         pacing="fast",
         recommended_frames=6,
+        bgm="动感",
+        impact_level="高",
+        pacing_strategy="前紧后松",
     ),
     StyleTemplate(
         name="温暖治愈",
@@ -149,8 +183,63 @@ TEMPLATES: List[StyleTemplate] = [
         ],
         pacing="slow",
         recommended_frames=5,
+        bgm="温暖",
+        impact_level="低",
+        pacing_strategy="慢开场快结尾",
+        negative_words="no text, no words, no letters, no logo, no watermark, no label",
+    ),
+    StyleTemplate(
+        name="灵动冲击",
+        key="dynamic_impact",
+        description="快速剪辑，环绕运镜，推近特写，高冲击力抓眼球",
+        image_style_words=[
+            "high-impact", "dynamic composition", "bold contrast",
+            "vivid colors", "sharp focus", "explosive energy",
+            "dramatic lighting", "punchy", "eye-catching",
+        ],
+        camera_style_words=[
+            "fast orbit", "rapid push-in", "whip pan",
+            "snap zoom", "quick cut", "dynamic circling",
+            "hard stop", "speed ramp",
+        ],
+        pacing="fast",
+        recommended_frames=6,
+        bgm="冲击感",
+        impact_level="高",
+        pacing_strategy="前紧后松",
     ),
 ]
+
+
+def _load_templates() -> List[StyleTemplate]:
+    """加载模板：优先从 templates.json，回退到内置"""
+    if TEMPLATES_FILE.exists():
+        try:
+            data = json.loads(TEMPLATES_FILE.read_text(encoding="utf-8"))
+            templates = []
+            for item in data:
+                templates.append(StyleTemplate(
+                    name=item["name"],
+                    key=item["key"],
+                    description=item["description"],
+                    image_style_words=item.get("image_style_words", []),
+                    camera_style_words=item.get("camera_style_words", []),
+                    pacing=item.get("pacing", "normal"),
+                    recommended_frames=item.get("recommended_frames", 5),
+                    bgm=item.get("bgm", ""),
+                    impact_level=item.get("impact_level", "中"),
+                    pacing_strategy=item.get("pacing_strategy", "均匀分配"),
+                    negative_words=item.get("negative_words", "no text, no words, no letters, no logo, no watermark, no label, no hands, no people"),
+                ))
+            if templates:
+                return templates
+        except Exception:
+            pass
+    return _DEFAULT_TEMPLATES
+
+
+# 启动时加载
+TEMPLATES: List[StyleTemplate] = _load_templates()
 
 
 def get_template(key: str) -> StyleTemplate:

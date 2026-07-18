@@ -20,7 +20,7 @@ from core.templates import TEMPLATES, get_template_by_name
 from core.llm_client import LLMClient
 from core.image_client import ImageClient
 from core.storyboard import generate_storyboard, Storyboard, StoryboardFrame
-from core.product_parser import parse_product_markdown, scan_product_directory, ProductInfo
+from core.product_parser import parse_product_markdown, scan_product_directory, ProductInfo, update_product_markdown
 from core.script_cache import save_cache, list_cache, load_cache, cleanup_cache
 from core.exporter import export_json, export_markdown, export_package
 from ui.settings_dialog import SettingsDialog
@@ -37,7 +37,7 @@ class GenerateScriptWorker(QObject):
 
     def __init__(self, llm_config, product_name, product_desc,
                  selling_points, template, frame_count, total_duration,
-                 product_info=None):
+                 product_info=None, direction=""):
         super().__init__()
         self.llm_config = llm_config
         self.product_name = product_name
@@ -47,6 +47,7 @@ class GenerateScriptWorker(QObject):
         self.frame_count = frame_count
         self.total_duration = total_duration
         self.product_info = product_info
+        self.direction = direction
 
     def run(self):
         try:
@@ -68,6 +69,7 @@ class GenerateScriptWorker(QObject):
                 frame_count=self.frame_count,
                 total_duration=self.total_duration,
                 product_info=self.product_info,
+                direction=self.direction,
                 on_chunk=on_chunk,
             )
             llm.close()
@@ -152,9 +154,146 @@ class MainWindow(QMainWindow):
         # 中央部件
         central = QWidget()
         self.setCentralWidget(central)
-        main_layout = QHBoxLayout(central)
-        main_layout.setContentsMargins(12, 12, 12, 12)
+
+        root_layout = QVBoxLayout(central)
+        root_layout.setContentsMargins(12, 8, 12, 12)
+        root_layout.setSpacing(8)
+
+        # ========== 顶部工具栏 ==========
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(8)
+
+        # 历史版本（左侧，紧凑）
+        cache_label = QLabel("历史版本：")
+        cache_label.setStyleSheet("color: #565f89; font-size: 12px;")
+        toolbar.addWidget(cache_label)
+        self.cache_combo = QComboBox()
+        self.cache_combo.addItem("-- 无缓存 --", "")
+        self.cache_combo.setFixedWidth(180)
+        toolbar.addWidget(self.cache_combo)
+        self.cache_load_btn = QPushButton("📂 加载")
+        self.cache_load_btn.clicked.connect(self._load_selected_cache)
+        toolbar.addWidget(self.cache_load_btn)
+
+        toolbar.addStretch()
+
+        # 核心操作按钮（右侧）
+        self.generate_script_btn = QPushButton("🎬 生成分镜脚本")
+        self.generate_script_btn.setMinimumHeight(36)
+        self.generate_script_btn.setMinimumWidth(140)
+        self.generate_script_btn.setStyleSheet(
+            "QPushButton { background: #7aa2f7; color: #0f1117; font-size: 13px; font-weight: bold; border-radius: 6px; border: none; padding: 4px 16px; }"
+            "QPushButton:hover { background: #89b0ff; }"
+            "QPushButton:disabled { background: #2a2e3f; color: #4c5375; }"
+        )
+        self.generate_script_btn.clicked.connect(self._generate_script)
+        toolbar.addWidget(self.generate_script_btn)
+
+        self.generate_images_btn = QPushButton("🖼️ 生成全部图片")
+        self.generate_images_btn.setMinimumHeight(36)
+        self.generate_images_btn.setMinimumWidth(130)
+        self.generate_images_btn.setEnabled(False)
+        self.generate_images_btn.setStyleSheet(
+            "QPushButton { background: #9ece6a; color: #0f1117; font-size: 13px; font-weight: bold; border-radius: 6px; border: none; padding: 4px 14px; }"
+            "QPushButton:hover { background: #b5e89a; }"
+            "QPushButton:disabled { background: #2a2e3f; color: #4c5375; }"
+        )
+        self.generate_images_btn.clicked.connect(self._generate_all_images)
+        toolbar.addWidget(self.generate_images_btn)
+
+        # 导出按钮组
+        export_sep = QLabel("│")
+        export_sep.setStyleSheet("color: #2a2e3f; font-size: 16px;")
+        toolbar.addWidget(export_sep)
+        self.export_json_btn = QPushButton("导出 JSON")
+        self.export_json_btn.setEnabled(False)
+        self.export_json_btn.clicked.connect(self._export_json)
+        toolbar.addWidget(self.export_json_btn)
+        self.export_md_btn = QPushButton("导出 MD")
+        self.export_md_btn.setEnabled(False)
+        self.export_md_btn.clicked.connect(self._export_markdown)
+        toolbar.addWidget(self.export_md_btn)
+        self.export_pkg_btn = QPushButton("导出全部")
+        self.export_pkg_btn.setEnabled(False)
+        self.export_pkg_btn.clicked.connect(self._export_package)
+        toolbar.addWidget(self.export_pkg_btn)
+
+        # 设置按钮（最右）
+        self.settings_btn = QPushButton("⚙ 设置")
+        self.settings_btn.setFixedWidth(70)
+        self.settings_btn.clicked.connect(self._open_settings)
+        toolbar.addWidget(self.settings_btn)
+
+        root_layout.addLayout(toolbar)
+
+        # ========== 分镜参数行（独立行，避免拥挤） ==========
+        param_row = QHBoxLayout()
+        param_row.setSpacing(12)
+        param_label = QLabel("分镜数：")
+        param_label.setStyleSheet("color: #7aa2f7; font-size: 12px; font-weight: bold;")
+        param_row.addWidget(param_label)
+        self.frame_count_spin = QSpinBox()
+        self.frame_count_spin.setRange(3, 10)
+        self.frame_count_spin.setValue(self.config["storyboard"]["frame_count"])
+        self.frame_count_spin.setFixedWidth(80)
+        self.frame_count_spin.setStyleSheet(
+            "QSpinBox { padding-right: 20px; }"
+            "QSpinBox::up-button { width: 18px; }"
+            "QSpinBox::down-button { width: 18px; }"
+        )
+        param_row.addWidget(self.frame_count_spin)
+
+        param_row.addSpacing(16)
+
+        dur_label = QLabel("总时长：")
+        dur_label.setStyleSheet("color: #7aa2f7; font-size: 12px; font-weight: bold;")
+        param_row.addWidget(dur_label)
+        self.duration_spin = QSpinBox()
+        self.duration_spin.setRange(5, 60)
+        self.duration_spin.setValue(self.config["storyboard"]["duration"])
+        self.duration_spin.setFixedWidth(80)
+        self.duration_spin.setStyleSheet(
+            "QSpinBox { padding-right: 20px; }"
+            "QSpinBox::up-button { width: 18px; }"
+            "QSpinBox::down-button { width: 18px; }"
+        )
+        self.duration_spin.valueChanged.connect(self._on_total_duration_changed)
+        param_row.addWidget(self.duration_spin)
+        dur_unit = QLabel("秒")
+        dur_unit.setStyleSheet("color: #565f89; font-size: 12px;")
+        param_row.addWidget(dur_unit)
+
+        param_row.addStretch()
+        root_layout.addLayout(param_row)
+
+        # ========== 视频方向输入行 ==========
+        direction_row = QHBoxLayout()
+        direction_row.setSpacing(8)
+        direction_label = QLabel("🎬 视频方向：")
+        direction_label.setStyleSheet("color: #7aa2f7; font-size: 12px; font-weight: bold;")
+        direction_label.setFixedWidth(90)
+        direction_row.addWidget(direction_label)
+        self.direction_input = QLineEdit()
+        self.direction_input.setPlaceholderText("如：强调性价比、节日氛围、搞笑风格、突出原材料...")
+        self.direction_input.setStyleSheet("QLineEdit { color: #c0caf5; font-size: 12px; }")
+        direction_row.addWidget(self.direction_input, 1)
+        root_layout.addLayout(direction_row)
+
+        # 进度条 + 状态（工具栏下方，细条）
+        status_row = QHBoxLayout()
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setFixedHeight(4)
+        status_row.addWidget(self.progress_bar, 1)
+        self.status_label = QLabel("就绪")
+        self.status_label.setStyleSheet("color: #565f89; font-size: 11px;")
+        status_row.addWidget(self.status_label)
+        root_layout.addLayout(status_row)
+
+        # ========== 主内容区（左 + 右） ==========
+        main_layout = QHBoxLayout()
         main_layout.setSpacing(10)
+        root_layout.addLayout(main_layout)
 
         # ========== 左侧面板 ==========
         left_panel = QWidget()
@@ -168,29 +307,21 @@ class MainWindow(QMainWindow):
 
         # 商品列表
         product_form.addRow(QLabel("选择商品："))
+
         self.product_list = QListWidget()
-        self.product_list.setMaximumHeight(160)
-        self.product_list.setStyleSheet("""
-            QListWidget {
-                background-color: #313244;
-                border: 1px solid #45475a;
-                border-radius: 6px;
-                color: #cdd6f4;
-            }
-            QListWidget::item {
-                padding: 6px 8px;
-                border-radius: 4px;
-            }
-            QListWidget::item:selected {
-                background-color: #89b4fa;
-                color: #1e1e2e;
-            }
-            QListWidget::item:hover {
-                background-color: #45475a;
-            }
-        """)
+        self.product_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.product_list.setMinimumHeight(200)
+        self.product_list.setMaximumHeight(350)
+        self.product_list.setTextElideMode(Qt.ElideRight)
+        self.product_list.setWordWrap(False)
         self.product_list.itemClicked.connect(self._on_product_selected)
         product_form.addRow(self.product_list)
+
+        # 刷新按钮
+        self.refresh_product_btn = QPushButton("🔄 刷新商品列表")
+        self.refresh_product_btn.setFixedHeight(32)
+        self.refresh_product_btn.clicked.connect(self._load_product_list)
+        product_form.addRow(self.refresh_product_btn)
 
         self.product_name_input = QLineEdit()
         self.product_name_input.setPlaceholderText("如：芒果干")
@@ -210,6 +341,13 @@ class MainWindow(QMainWindow):
         self.selling_points_input.setMaximumHeight(100)
         product_form.addRow("卖点：", self.selling_points_input)
 
+        # 保存商品信息回 Markdown
+        self.save_product_btn = QPushButton("💾 保存商品信息")
+        self.save_product_btn.setFixedHeight(34)
+        self.save_product_btn.setEnabled(False)
+        self.save_product_btn.clicked.connect(self._save_product_info)
+        product_form.addRow(self.save_product_btn)
+
         left_layout.addWidget(product_group)
 
         # 风格模板
@@ -221,103 +359,35 @@ class MainWindow(QMainWindow):
             self.style_combo.addItem(f"{t.name} - {t.description}", t.key)
         style_layout.addWidget(self.style_combo)
 
+        # 背景音乐选择
+        bgm_row = QHBoxLayout()
+        bgm_label = QLabel("🎵 背景音乐：")
+        bgm_label.setFixedWidth(90)
+        bgm_row.addWidget(bgm_label)
+
+        self.bgm_combo = QComboBox()
+        self.bgm_combo.addItem("古典")
+        self.bgm_combo.addItem("冲击感")
+        self.bgm_combo.addItem("轻柔")
+        self.bgm_combo.addItem("清新")
+        self.bgm_combo.addItem("国潮")
+        self.bgm_combo.addItem("动感")
+        self.bgm_combo.addItem("温暖")
+        self.bgm_combo.addItem("欢快")
+        self.bgm_combo.addItem("悬疑")
+        self.bgm_combo.addItem("电子")
+        bgm_row.addWidget(self.bgm_combo, 1)
+        style_layout.addLayout(bgm_row)
+
         self.style_desc_label = QLabel()
         self.style_desc_label.setWordWrap(True)
-        self.style_desc_label.setStyleSheet("color: #a6adc8; font-size: 12px; padding: 4px;")
+        self.style_desc_label.setStyleSheet("color: #565f89; font-size: 12px; padding: 4px;")
         style_layout.addWidget(self.style_desc_label)
 
         self.style_combo.currentIndexChanged.connect(self._on_style_changed)
         left_layout.addWidget(style_group)
 
-        # 分镜参数
-        param_group = QGroupBox("分镜参数")
-        param_form = QFormLayout(param_group)
-
-        self.frame_count_spin = QSpinBox()
-        self.frame_count_spin.setRange(3, 10)
-        self.frame_count_spin.setValue(self.config["storyboard"]["frame_count"])
-        param_form.addRow("分镜数：", self.frame_count_spin)
-
-        self.duration_spin = QSpinBox()
-        self.duration_spin.setRange(5, 60)
-        self.duration_spin.setValue(self.config["storyboard"]["duration"])
-        param_form.addRow("总时长（秒）：", self.duration_spin)
-
-        left_layout.addWidget(param_group)
-
-        # 历史缓存版本
-        cache_group = QGroupBox("历史版本")
-        cache_layout = QHBoxLayout(cache_group)
-        self.cache_combo = QComboBox()
-        self.cache_combo.setStyleSheet("""
-            QComboBox { padding: 4px 8px; }
-        """)
-        self.cache_combo.addItem("-- 无缓存 --", "")
-        cache_layout.addWidget(self.cache_combo, 1)
-        self.cache_load_btn = QPushButton("加载")
-        self.cache_load_btn.setFixedWidth(50)
-        self.cache_load_btn.clicked.connect(self._load_selected_cache)
-        cache_layout.addWidget(self.cache_load_btn)
-        left_layout.addWidget(cache_group)
-
-        # 操作按钮
-        self.generate_script_btn = QPushButton("🎬 生成分镜脚本")
-        self.generate_script_btn.setMinimumHeight(40)
-        self.generate_script_btn.setStyleSheet(
-            "QPushButton { background: #89b4fa; color: #11111b; font-size: 14px; font-weight: bold; border-radius: 6px; border: none; }"
-            "QPushButton:hover { background: #b4befe; }"
-            "QPushButton:disabled { background: #313244; color: #585b70; }"
-        )
-        self.generate_script_btn.clicked.connect(self._generate_script)
-        left_layout.addWidget(self.generate_script_btn)
-
-        self.generate_images_btn = QPushButton("🖼️ 生成全部图片")
-        self.generate_images_btn.setMinimumHeight(36)
-        self.generate_images_btn.setEnabled(False)
-        self.generate_images_btn.setStyleSheet(
-            "QPushButton { background: #a6e3a1; color: #11111b; font-size: 13px; border-radius: 6px; border: none; }"
-            "QPushButton:hover { background: #94e2d5; }"
-            "QPushButton:disabled { background: #313244; color: #585b70; }"
-        )
-        self.generate_images_btn.clicked.connect(self._generate_all_images)
-        left_layout.addWidget(self.generate_images_btn)
-
-        # 导出按钮
-        export_layout = QHBoxLayout()
-        self.export_json_btn = QPushButton("导出 JSON")
-        self.export_json_btn.setEnabled(False)
-        self.export_json_btn.clicked.connect(self._export_json)
-        export_layout.addWidget(self.export_json_btn)
-
-        self.export_md_btn = QPushButton("导出 MD")
-        self.export_md_btn.setEnabled(False)
-        self.export_md_btn.clicked.connect(self._export_markdown)
-        export_layout.addWidget(self.export_md_btn)
-
-        self.export_pkg_btn = QPushButton("导出全部")
-        self.export_pkg_btn.setEnabled(False)
-        self.export_pkg_btn.clicked.connect(self._export_package)
-        export_layout.addWidget(self.export_pkg_btn)
-
-        left_layout.addLayout(export_layout)
-
-        # 进度条
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        left_layout.addWidget(self.progress_bar)
-
-        # 状态标签
-        self.status_label = QLabel("就绪")
-        self.status_label.setStyleSheet("color: #a6adc8; font-size: 12px;")
-        left_layout.addWidget(self.status_label)
-
         left_layout.addStretch()
-
-        # 设置按钮
-        self.settings_btn = QPushButton("⚙ 设置")
-        self.settings_btn.setMaximumWidth(100)
-        self.settings_btn.clicked.connect(self._open_settings)
-        left_layout.addWidget(self.settings_btn)
 
         # ========== 右侧面板 ==========
         right_panel = QWidget()
@@ -327,6 +397,7 @@ class MainWindow(QMainWindow):
         # 分镜视图（包含帧列表+详情+提示词）
         self.storyboard_view = StoryboardView()
         self.storyboard_view.frame_selected.connect(self._on_frame_selected)
+        self.storyboard_view.frame_duration_changed.connect(self._on_frame_duration_changed)
         right_layout.addWidget(self.storyboard_view, stretch=1)
 
         # 底部操作栏
@@ -340,86 +411,56 @@ class MainWindow(QMainWindow):
 
         # 复制按钮组
         copy_group_label = QLabel("复制全部帧：")
-        copy_group_label.setStyleSheet("color: #a6adc8; font-size: 12px;")
+        copy_group_label.setStyleSheet("color: #565f89; font-size: 12px;")
         bottom_bar.addWidget(copy_group_label)
 
         self.copy_prompt_en_btn = QPushButton("提示词EN")
         self.copy_prompt_en_btn.setFixedHeight(30)
-        self.copy_prompt_en_btn.setStyleSheet(
-            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 10px; }"
-            "QPushButton:hover { background: #45475a; }"
-            "QPushButton:disabled { background: #181825; color: #585b70; }"
-        )
         self.copy_prompt_en_btn.setEnabled(False)
         self.copy_prompt_en_btn.clicked.connect(lambda: self._copy_all_field("image_prompt"))
         bottom_bar.addWidget(self.copy_prompt_en_btn)
 
         self.copy_prompt_cn_btn = QPushButton("提示词CN")
         self.copy_prompt_cn_btn.setFixedHeight(30)
-        self.copy_prompt_cn_btn.setStyleSheet(
-            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 10px; }"
-            "QPushButton:hover { background: #45475a; }"
-            "QPushButton:disabled { background: #181825; color: #585b70; }"
-        )
         self.copy_prompt_cn_btn.setEnabled(False)
         self.copy_prompt_cn_btn.clicked.connect(lambda: self._copy_all_field("image_prompt_cn"))
         bottom_bar.addWidget(self.copy_prompt_cn_btn)
 
         self.copy_motion_en_btn = QPushButton("镜头EN")
         self.copy_motion_en_btn.setFixedHeight(30)
-        self.copy_motion_en_btn.setStyleSheet(
-            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 10px; }"
-            "QPushButton:hover { background: #45475a; }"
-            "QPushButton:disabled { background: #181825; color: #585b70; }"
-        )
         self.copy_motion_en_btn.setEnabled(False)
         self.copy_motion_en_btn.clicked.connect(lambda: self._copy_all_field("camera_motion"))
         bottom_bar.addWidget(self.copy_motion_en_btn)
 
         self.copy_motion_cn_btn = QPushButton("镜头CN")
         self.copy_motion_cn_btn.setFixedHeight(30)
-        self.copy_motion_cn_btn.setStyleSheet(
-            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 10px; }"
-            "QPushButton:hover { background: #45475a; }"
-            "QPushButton:disabled { background: #181825; color: #585b70; }"
-        )
         self.copy_motion_cn_btn.setEnabled(False)
         self.copy_motion_cn_btn.clicked.connect(lambda: self._copy_all_field("camera_motion_cn"))
         bottom_bar.addWidget(self.copy_motion_cn_btn)
 
         self.copy_hint_en_btn = QPushButton("动态EN")
         self.copy_hint_en_btn.setFixedHeight(30)
-        self.copy_hint_en_btn.setStyleSheet(
-            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 10px; }"
-            "QPushButton:hover { background: #45475a; }"
-            "QPushButton:disabled { background: #181825; color: #585b70; }"
-        )
         self.copy_hint_en_btn.setEnabled(False)
         self.copy_hint_en_btn.clicked.connect(lambda: self._copy_all_field("motion_hint"))
         bottom_bar.addWidget(self.copy_hint_en_btn)
 
         self.copy_hint_cn_btn = QPushButton("动态CN")
         self.copy_hint_cn_btn.setFixedHeight(30)
-        self.copy_hint_cn_btn.setStyleSheet(
-            "QPushButton { background: #313244; color: #cdd6f4; font-size: 11px; border-radius: 4px; border: 1px solid #45475a; padding: 2px 10px; }"
-            "QPushButton:hover { background: #45475a; }"
-            "QPushButton:disabled { background: #181825; color: #585b70; }"
-        )
         self.copy_hint_cn_btn.setEnabled(False)
         self.copy_hint_cn_btn.clicked.connect(lambda: self._copy_all_field("motion_hint_cn"))
         bottom_bar.addWidget(self.copy_hint_cn_btn)
 
         # 豆包提示词按钮
         doubao_sep = QLabel("│")
-        doubao_sep.setStyleSheet("color: #45475a; font-size: 14px;")
+        doubao_sep.setStyleSheet("color: #2a2e3f; font-size: 14px;")
         bottom_bar.addWidget(doubao_sep)
 
         self.doubao_img_btn = QPushButton("📎 豆包图片")
         self.doubao_img_btn.setFixedHeight(30)
         self.doubao_img_btn.setStyleSheet(
-            "QPushButton { background: #a6e3a1; color: #11111b; font-size: 11px; font-weight: bold; border-radius: 4px; border: none; padding: 2px 12px; }"
-            "QPushButton:hover { background: #94d68a; }"
-            "QPushButton:disabled { background: #181825; color: #585b70; }"
+            "QPushButton { background: #9ece6a; color: #0f1117; font-size: 11px; font-weight: bold; border-radius: 6px; border: none; padding: 2px 12px; }"
+            "QPushButton:hover { background: #b5e89a; }"
+            "QPushButton:disabled { background: #1f2233; color: #3b4056; }"
         )
         self.doubao_img_btn.setEnabled(False)
         self.doubao_img_btn.clicked.connect(self._copy_doubao_image_prompt)
@@ -428,9 +469,9 @@ class MainWindow(QMainWindow):
         self.doubao_video_btn = QPushButton("🎬 豆包视频")
         self.doubao_video_btn.setFixedHeight(30)
         self.doubao_video_btn.setStyleSheet(
-            "QPushButton { background: #f9e2af; color: #11111b; font-size: 11px; font-weight: bold; border-radius: 4px; border: none; padding: 2px 12px; }"
-            "QPushButton:hover { background: #efd9a6; }"
-            "QPushButton:disabled { background: #181825; color: #585b70; }"
+            "QPushButton { background: #e0af68; color: #0f1117; font-size: 11px; font-weight: bold; border-radius: 6px; border: none; padding: 2px 12px; }"
+            "QPushButton:hover { background: #f0c878; }"
+            "QPushButton:disabled { background: #1f2233; color: #3b4056; }"
         )
         self.doubao_video_btn.setEnabled(False)
         self.doubao_video_btn.clicked.connect(self._copy_doubao_video_prompt)
@@ -438,7 +479,7 @@ class MainWindow(QMainWindow):
 
         right_layout.addLayout(bottom_bar)
 
-        # 组装
+        # 组装（左侧面板直接放入，不滚动）
         main_layout.addWidget(left_panel)
         main_layout.addWidget(right_panel, stretch=1)
 
@@ -446,115 +487,144 @@ class MainWindow(QMainWindow):
         self._on_style_changed(0)
 
     def _apply_style(self):
-        """应用全局样式 - 深色主题"""
+        """应用全局样式 - Tokyo Night 深蓝主题"""
         self.setStyleSheet("""
             QMainWindow, QWidget {
-                background: #1e1e2e;
-                color: #cdd6f4;
+                background: #0f1117;
+                color: #a9b1d6;
                 font-size: 13px;
             }
             QGroupBox {
                 font-weight: bold;
-                color: #cdd6f4;
-                border: 1px solid #45475a;
-                border-radius: 6px;
-                margin-top: 10px;
-                padding-top: 14px;
-                background: #181825;
+                color: #7aa2f7;
+                border: 1px solid #2a2e3f;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding: 18px 10px 10px 10px;
+                background: #161720;
             }
             QGroupBox::title {
-                left: 10px;
-                padding: 0 6px;
-                color: #89b4fa;
+                left: 12px;
+                padding: 0 8px;
+                color: #7aa2f7;
+                font-size: 13px;
             }
             QLabel {
-                color: #cdd6f4;
+                color: #a9b1d6;
             }
             QPushButton {
-                padding: 6px 14px;
-                border-radius: 4px;
-                background: #313244;
-                color: #cdd6f4;
-                border: 1px solid #45475a;
+                padding: 7px 14px;
+                border-radius: 6px;
+                background: #2a2e3f;
+                color: #a9b1d6;
+                border: 1px solid #2a2e3f;
             }
             QPushButton:hover {
-                background: #45475a;
+                background: #3b4056;
+                border: 1px solid #4c5375;
             }
             QPushButton:pressed {
-                background: #585b70;
+                background: #4c5375;
             }
             QPushButton:disabled {
-                background: #181825;
-                color: #585b70;
-                border: 1px solid #313244;
+                background: #161720;
+                color: #3b4056;
+                border: 1px solid #1f2233;
             }
             QLineEdit, QTextEdit, QComboBox, QSpinBox {
-                padding: 5px 8px;
-                border: 1px solid #45475a;
-                border-radius: 4px;
-                background: #11111b;
-                color: #cdd6f4;
+                padding: 6px 10px;
+                border: 1px solid #2a2e3f;
+                border-radius: 6px;
+                background: #11131a;
+                color: #c0caf5;
+                selection-background-color: #3d59a1;
             }
             QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus {
-                border: 1px solid #89b4fa;
+                border: 1px solid #7aa2f7;
+            }
+            QLineEdit::placeholder, QTextEdit::placeholder {
+                color: #4c5375;
             }
             QTextEdit {
-                background: #11111b;
-                color: #cdd6f4;
+                background: #11131a;
+                color: #c0caf5;
             }
             QComboBox QAbstractItemView {
-                background: #1e1e2e;
-                color: #cdd6f4;
-                selection-background-color: #313244;
-                border: 1px solid #45475a;
+                background: #11131a;
+                color: #c0caf5;
+                selection-background-color: #2a2e3f;
+                selection-color: #7aa2f7;
+                border: 1px solid #2a2e3f;
+                border-radius: 6px;
+                padding: 4px;
             }
             QProgressBar {
-                border: 1px solid #45475a;
-                border-radius: 4px;
+                border: 1px solid #2a2e3f;
+                border-radius: 6px;
                 text-align: center;
-                color: #cdd6f4;
-                background: #11111b;
+                color: #a9b1d6;
+                background: #11131a;
+                height: 20px;
             }
             QProgressBar::chunk {
-                background: #89b4fa;
-                border-radius: 3px;
+                background: #7aa2f7;
+                border-radius: 4px;
             }
             QScrollArea {
-                border: 1px solid #45475a;
-                background: #181825;
+                border: none;
+                background: #0f1117;
             }
             QScrollBar:horizontal {
-                background: #181825;
-                height: 12px;
+                background: #0f1117;
+                height: 10px;
                 border: none;
             }
             QScrollBar::handle:horizontal {
-                background: #45475a;
+                background: #2a2e3f;
                 border-radius: 4px;
                 min-width: 30px;
             }
             QScrollBar::handle:horizontal:hover {
-                background: #585b70;
+                background: #4c5375;
             }
             QScrollBar:vertical {
-                background: #181825;
-                width: 12px;
+                background: #0f1117;
+                width: 10px;
                 border: none;
             }
             QScrollBar::handle:vertical {
-                background: #45475a;
+                background: #2a2e3f;
                 border-radius: 4px;
                 min-height: 30px;
             }
             QScrollBar::handle:vertical:hover {
-                background: #585b70;
+                background: #4c5375;
             }
             QScrollBar::add-line, QScrollBar::sub-line {
                 border: none;
                 background: none;
             }
             QFrame {
-                color: #cdd6f4;
+                color: #a9b1d6;
+            }
+            QListWidget {
+                background: #11131a;
+                border: 1px solid #2a2e3f;
+                border-radius: 8px;
+                color: #c0caf5;
+                font-size: 13px;
+            }
+            QListWidget::item {
+                padding: 6px 14px;
+                border-radius: 4px;
+                border-bottom: 1px solid #1f2233;
+            }
+            QListWidget::item:selected {
+                background: #3d59a1;
+                color: #ffffff;
+            }
+            QListWidget::item:hover {
+                background: #2a2e3f;
             }
         """)
 
@@ -563,9 +633,14 @@ class MainWindow(QMainWindow):
         template = TEMPLATES[index]
         self.style_desc_label.setText(
             f"🎨 {template.description}\n"
-            f"📷 推荐 {template.recommended_frames} 帧"
+            f"📷 推荐 {template.recommended_frames} 帧 | 冲击：{template.impact_level} | 节奏：{template.pacing_strategy}"
         )
         self.frame_count_spin.setValue(template.recommended_frames)
+        # 同步背景音乐
+        if template.bgm:
+            i = self.bgm_combo.findText(template.bgm)
+            if i >= 0:
+                self.bgm_combo.setCurrentIndex(i)
 
     def _load_product_list(self):
         """从配置的商品目录加载商品列表"""
@@ -576,9 +651,10 @@ class MainWindow(QMainWindow):
         try:
             products = scan_product_directory(directory)
             for p in products:
-                item_text = p["name"]
-                list_item = QListWidgetItem(item_text)
+                full_name = p["name"]
+                list_item = QListWidgetItem(full_name)
                 list_item.setData(Qt.UserRole, p["md_path"])
+                list_item.setToolTip(full_name)
                 self.product_list.addItem(list_item)
             if products:
                 self.status_label.setText(f"已加载 {len(products)} 个商品")
@@ -612,10 +688,58 @@ class MainWindow(QMainWindow):
             self.status_label.setText(
                 f"已选择：{info.name} | 质感关键词：{texture_cn}"
             )
+            # 启用保存按钮
+            self.save_product_btn.setEnabled(True)
             # 刷新该商品的缓存列表
             self._refresh_cache_combo(info.name)
         except Exception as e:
             QMessageBox.critical(self, "解析失败", f"解析商品信息失败：\n\n{e}")
+
+    def _save_product_info(self):
+        """将界面上修改的商品信息回写到 Markdown 文件"""
+        if not self.product_info or not hasattr(self, 'current_product_folder'):
+            return
+        
+        # 找到当前商品的 MD 文件路径
+        md_path = None
+        for i in range(self.product_list.count()):
+            item = self.product_list.item(i)
+            item_name = item.text()
+            if item_name == self.product_info.name or (self.product_info.title and item_name in self.product_info.title):
+                md_path = item.data(Qt.UserRole)
+                break
+        if not md_path:
+            # fallback: 从 product_info.raw_text 的路径找
+            return
+        
+        updated_fields = []
+        
+        # 保存商品类目
+        new_category = self.product_category_input.text().strip()
+        if new_category and new_category != self.product_info.category:
+            if update_product_markdown(md_path, "商品类目", new_category):
+                self.product_info.category = new_category
+                updated_fields.append("类目")
+        
+        # 保存产品描述（写入「产品描述」字段，如果表格中没有则新增）
+        new_desc = self.product_desc_input.toPlainText().strip()
+        if new_desc and new_desc != self.product_info.description:
+            if update_product_markdown(md_path, "产品描述", new_desc):
+                self.product_info.description = new_desc
+                updated_fields.append("描述")
+        
+        # 保存卖点（用分号连接，写入「卖点」字段）
+        new_points = self.selling_points_input.toPlainText().strip()
+        old_points = "\n".join(self.product_info.selling_points)
+        if new_points and new_points != old_points:
+            if update_product_markdown(md_path, "卖点", new_points.replace("\n", ";")):
+                self.product_info.selling_points = new_points.split("\n")
+                updated_fields.append("卖点")
+        
+        if updated_fields:
+            self.status_label.setText(f"已保存到 Markdown：{'、'.join(updated_fields)}")
+        else:
+            self.status_label.setText("没有需要保存的更改")
 
     def _open_settings(self):
         """打开设置"""
@@ -667,6 +791,7 @@ class MainWindow(QMainWindow):
             frame_count=frame_count,
             total_duration=total_duration,
             product_info=self.product_info,
+            direction=self.direction_input.text().strip(),
         )
         self.script_worker.moveToThread(self.script_thread)
         self.script_thread.started.connect(self.script_worker.run)
@@ -685,6 +810,45 @@ class MainWindow(QMainWindow):
             self._chunk_count = 0
         self._chunk_count += len(text)
         self.status_label.setText(f"正在生成分镜脚本... 已接收 {self._chunk_count} 字符")
+
+    def _on_total_duration_changed(self, total_duration: int):
+        """总时长改变后，按比例缩放各帧时长（保持现有节奏）"""
+        if not self.current_frames_data:
+            self.statusBar().showMessage("请先生成分镜再调整总时长", 3000)
+            return
+        frame_count = len(self.current_frames_data)
+        if frame_count == 0:
+            return
+        old_total = sum(f.get("duration", 0) for f in self.current_frames_data)
+        if old_total <= 0:
+            # 旧数据异常，fallback 到平均分配
+            per_frame = total_duration / frame_count
+            for frame in self.current_frames_data:
+                frame["duration"] = round(per_frame, 1)
+        else:
+            ratio = total_duration / old_total
+            for frame in self.current_frames_data:
+                frame["duration"] = round(frame.get("duration", 0) * ratio, 1)
+        # 同步 storyboard 对象
+        if self.current_storyboard:
+            for i, f in enumerate(self.current_storyboard.frames):
+                f.duration = self.current_frames_data[i]["duration"]
+        # 刷新视图
+        self.storyboard_view.set_frames(self.current_frames_data)
+
+    def _on_frame_duration_changed(self, index: int, duration: float):
+        """单帧时长被修改，同步数据并更新总时长显示"""
+        if not self.current_frames_data or not (0 <= index < len(self.current_frames_data)):
+            return
+        self.current_frames_data[index]["duration"] = duration
+        # 同步 storyboard 对象
+        if self.current_storyboard and index < len(self.current_storyboard.frames):
+            self.current_storyboard.frames[index].duration = duration
+        # 更新总时长输入框（不触发信号，避免循环）
+        new_total = sum(f.get("duration", 0) for f in self.current_frames_data)
+        self.duration_spin.blockSignals(True)
+        self.duration_spin.setValue(int(round(new_total)))
+        self.duration_spin.blockSignals(False)
 
     def _on_script_finished(self, storyboard: Storyboard):
         """分镜脚本生成完成"""
@@ -855,32 +1019,13 @@ class MainWindow(QMainWindow):
         category = self._get_product_category()
         frames = self.current_frames_data
         frame_count = len(frames)
+        template = TEMPLATES[self.style_combo.currentIndex()]
 
-        lines = []
-        lines.append(f"你是一个专业的零食带货短视频美术指导。我会给你商品参考图和分镜描述，你需要根据这些信息生成对应的图片。主要产品是{category}。")
-        lines.append("")
-        lines.append("## 图片要求")
-        lines.append("- 构图：主体内容集中在画面中间 80% 区域，上下各留 10% 的留白空间（不要放重要元素在上下边缘）")
-        lines.append("- 原因：后期会裁切上下边缘（水印区域），所以关键信息、商品、文字必须在中间 80% 以内")
-        lines.append("- 风格：快速、简洁、冲击力强，色彩饱和度高，适合短视频带货")
-        lines.append("- 商品还原：严格参考我给的商品参考图，保持商品外观、颜色、包装高度一致")
-        lines.append("- 不要在画面中生成任何中文文字")
-        lines.append("- 画面比例：9:16（竖屏短视频）")
-        lines.append("")
-        lines.append(f"## 分镜列表（共 {frame_count} 帧，请一次性全部生成）")
-        lines.append("")
-        for i, f in enumerate(frames):
-            frame_num = f.get("frame", i + 1)
-            duration = f.get("duration", 0)
-            lines.append(f"### 第 {frame_num} 帧（{duration:.1f}s）")
-            lines.append(f"画面描述：{f.get('description', '—')}")
-            lines.append(f"图片提示词：{f.get('image_prompt_cn', f.get('image_prompt', '—'))}")
-            lines.append(f"画面动态：{f.get('motion_hint_cn', f.get('motion_hint', '—'))}")
-            lines.append("")
+        from core.prompt_loader import get_doubao_image_prompt
+        text = get_doubao_image_prompt(category, frames, frame_count, negative_words=template.negative_words)
+        if not text:
+            return  # 模板加载失败
 
-        lines.append(f"请根据以上分镜列表，结合我提供的商品参考图，一次性生成全部 {frame_count} 张图片。")
-
-        text = "\n".join(lines)
         QApplication.clipboard().setText(text)
         self.status_label.setText(f"已复制豆包图片提示词（{frame_count} 帧）")
 
@@ -891,31 +1036,14 @@ class MainWindow(QMainWindow):
         category = self._get_product_category()
         frames = self.current_frames_data
         frame_count = len(frames)
+        bgm_style = self.bgm_combo.currentText()
+        template = TEMPLATES[self.style_combo.currentIndex()]
 
-        lines = []
-        lines.append(f"现在根据刚才生成的图片，逐帧生成对应的视频。主要产品是{category}。")
-        lines.append("")
-        lines.append("## 视频要求")
-        lines.append("- 主体始终保持在画面中间 80% 区域，上下各 10% 不要有重要内容（会被裁切掉水印）")
-        lines.append("- 风格：快速、简洁、冲击力强，节奏干脆利落")
-        lines.append("- 商品外观必须与参考图保持一致")
-        lines.append("- 不要出现任何文字或水印")
-        lines.append("- 画面比例：9:16（竖屏短视频）")
-        lines.append("")
-        lines.append(f"## 逐帧视频指令（共 {frame_count} 帧）")
-        lines.append("")
-        for i, f in enumerate(frames):
-            frame_num = f.get("frame", i + 1)
-            duration = f.get("duration", 0)
-            lines.append(f"### 第 {frame_num} 帧（{duration:.1f}s）")
-            lines.append(f"镜头运动：{f.get('camera_motion_cn', f.get('camera_motion', '—'))}")
-            lines.append(f"画面动态：{f.get('motion_hint_cn', f.get('motion_hint', '—'))}")
-            lines.append(f"时长：{duration:.1f} 秒")
-            lines.append("")
+        from core.prompt_loader import get_doubao_video_prompt
+        text = get_doubao_video_prompt(category, frames, frame_count, bgm_style, negative_words=template.negative_words)
+        if not text:
+            return  # 模板加载失败
 
-        lines.append("请逐帧生成视频，每生成一段等我确认后再生成下一段。".format(frame_count))
-
-        text = "\n".join(lines)
         QApplication.clipboard().setText(text)
         self.status_label.setText(f"已复制豆包视频提示词（{frame_count} 帧）")
 

@@ -10,6 +10,7 @@ from datetime import datetime
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional
 from .templates import StyleTemplate
+from .prompt_loader import get_system_prompt, get_user_prompt
 from .llm_client import LLMClient
 from .product_parser import ProductInfo, build_texture_description
 
@@ -26,6 +27,7 @@ class StoryboardFrame:
     camera_motion_cn: str = ""        # 镜头运动中文对照
     motion_hint_cn: str = ""          # 画面动态中文对照
     description: str = ""             # 画面内容中文描述
+    transition: str = ""             # 帧间过渡方式（hard cut / whip pan / speed ramp / fade）
     image_path: Optional[str] = None  # 生成的图片路径
 
 
@@ -110,13 +112,75 @@ def build_user_prompt(
     frame_count: int,
     total_duration: int,
     product_info: Optional[ProductInfo] = None,
+    direction: str = "",
 ) -> str:
     """构建发送给 LLM 的用户提示词"""
 
     style_words = ", ".join(template.image_style_words)
     camera_words = ", ".join(template.camera_style_words)
 
-    # 如果有解析过的商品信息，用更丰富的上下文
+    # 准备变量
+    texture_cn = ""
+    texture_desc = ""
+    spec_info = ""
+    review_tags = ""
+    copy_hints = ""
+    product_texture = ""
+    flavor_tags = ""
+
+    if product_info:
+        texture_desc = build_texture_description(product_info)
+        texture_cn = "、".join(product_info.texture_keywords[:10]) if product_info.texture_keywords else "未知"
+        # 核心质感描述：中文质感词 + 英文视觉描述
+        if product_info.texture_keywords:
+            product_texture = f"{texture_cn}（{texture_desc}）"
+        # 口味标签
+        if product_info.flavor_tags:
+            flavor_tags = "、".join(product_info.flavor_tags[:8])
+        if product_info.top_copies:
+            top3 = product_info.top_copies[:3]
+            copy_hints = "\n".join(f"  - {c}" for c in top3)
+        review_tags = "、".join(product_info.review_keywords[:8]) if product_info.review_keywords else ""
+        if product_info.specs:
+            spec_info = f"\n产品规格：{product_info.specs[0]}"
+
+    # 计算帧时长分配方案
+    from .prompt_loader import compute_duration_plan
+    duration_plan = compute_duration_plan(frame_count, total_duration, template.pacing_strategy)
+
+    # 尝试从外部模板加载
+    prompt = get_user_prompt(
+        product_name=product_name,
+        product_desc=product_desc,
+        selling_points=selling_points,
+        template_name=template.name,
+        template_desc=template.description,
+        style_words=style_words,
+        camera_words=camera_words,
+        pacing=template.pacing,
+        frame_count=frame_count,
+        total_duration=total_duration,
+        # 新变量
+        product_texture=product_texture,
+        impact_level=template.impact_level,
+        pacing_strategy=template.pacing_strategy,
+        bgm_style=template.bgm,
+        mid_frame=max(2, frame_count - 1),
+        negative_words=template.negative_words,
+        duration_plan=duration_plan,
+        flavor_tags=flavor_tags,
+        # 兼容旧变量
+        texture_cn=f"\n质感特征（中文）：{texture_cn}" if texture_cn else "",
+        texture_desc=f"\n质感视觉描述（英文）：{texture_desc}" if texture_desc else "",
+        spec_info=spec_info,
+        review_tags=f"用户评价关键词：{review_tags}\n" if review_tags else "",
+        copy_hints=f"\n高转化文案参考（提炼卖点方向）：\n{copy_hints}\n" if copy_hints else "",
+        direction=f"\n【视频方向指引】\n{direction}\n" if direction else "",
+    )
+    if prompt:
+        return prompt
+
+    # 回退：内置提示词
     if product_info:
         texture_desc = build_texture_description(product_info)
         texture_cn = "、".join(product_info.texture_keywords[:10]) if product_info.texture_keywords else "未知"
@@ -212,6 +276,7 @@ def generate_storyboard(
     frame_count: int,
     total_duration: int,
     product_info: Optional[ProductInfo] = None,
+    direction: str = "",
     on_chunk=None,
 ) -> Storyboard:
     """调用 LLM 生成分镜脚本，支持流式回调"""
@@ -220,10 +285,16 @@ def generate_storyboard(
         product_name, product_desc, selling_points,
         template, frame_count, total_duration,
         product_info=product_info,
+        direction=direction,
     )
 
+    # 从外部加载提示词模板，找不到时回退到内置
+    sys_prompt = get_system_prompt()
+    if not sys_prompt:
+        sys_prompt = SYSTEM_PROMPT
+
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": sys_prompt},
         {"role": "user", "content": user_prompt},
     ]
 
@@ -248,6 +319,7 @@ def generate_storyboard(
             motion_hint=item.get("motion_hint", ""),
             motion_hint_cn=item.get("motion_hint_cn", ""),
             description=item.get("description", ""),
+            transition=item.get("transition", "none"),
         )
         frames.append(frame)
 

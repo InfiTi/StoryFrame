@@ -25,6 +25,7 @@ class ProductInfo:
     description: str = ""                   # 产品描述（组合）
     selling_points: List[str] = field(default_factory=list)  # 卖点列表
     texture_keywords: List[str] = field(default_factory=list)  # 质感关键词
+    flavor_tags: List[str] = field(default_factory=list)       # 口味标签
     review_keywords: List[str] = field(default_factory=list)   # 评价关键词
     top_copies: List[str] = field(default_factory=list)        # 高转化文案
     raw_text: str = ""                      # 原始全文
@@ -180,6 +181,23 @@ def parse_product_markdown(file_path: str) -> ProductInfo:
             if keyword not in info.texture_keywords:
                 info.texture_keywords.append(keyword)
 
+    # 7.1 提取口味标签
+    flavor_pattern = re.compile(r'(\b|(?<=[，。、\s]))(酸甜?|微酸|酸|微甜|甜|微辣|辣|中辣|重辣|咸香?|咸|鲜|微苦|苦|酸甜可口|香|咸甜|香辣|麻辣|五香味|奶香|奶|巧克力味|抹茶味|蜂蜜味|果汁味|水果味|麦香|奶香?味?|咸蛋黄味|芝士味|奶油味)(\b|(?=[，。、\s]))')
+    for m in flavor_pattern.finditer(text):
+        tag = m.group(1).strip()
+        if tag and tag not in info.flavor_tags:
+            info.flavor_tags.append(tag)
+    # 也从质感关键词中补充口味类词
+    flavor_from_texture = ['香', '咸香', '咸', '甜', '辣', '鲜', '麦香', '浓郁']
+    for kw in info.texture_keywords:
+        if kw in flavor_from_texture and kw not in info.flavor_tags:
+            info.flavor_tags.append(kw)
+    # 从评价关键词中补充
+    for kw in info.review_keywords:
+        for ft in flavor_from_texture:
+            if ft in kw and ft not in info.flavor_tags:
+                info.flavor_tags.append(ft)
+
     # 7.5 提取商品类目（表格已有则直接用，没有则从趋势榜/标题 fallback）
     if not info.category:
         if info.trend_rank:
@@ -288,3 +306,60 @@ def build_texture_description(info: ProductInfo) -> str:
         return ""
     # 分层组织：材质 → 质感 → 动态
     return ", ".join(en_keywords)
+
+
+def update_product_markdown(md_path: str, field: str, new_value: str) -> bool:
+    """更新商品 Markdown 文件中表格的某个字段
+    
+    Args:
+        md_path: Markdown 文件路径
+        field: 字段名（如 "商品类目"）
+        new_value: 新值
+    
+    Returns:
+        True 如果成功更新（或新增）了字段
+    """
+    path = Path(md_path)
+    if not path.exists():
+        return False
+    
+    text = path.read_text(encoding="utf-8")
+    lines = text.split("\n")
+    
+    # 在「商品基础信息」表格中查找并更新字段
+    # 表格格式: | 字段 | 值 |
+    pattern = re.compile(r'\|\s*' + re.escape(field) + r'\s*\|\s*(.+?)\s*\|')
+    
+    found = False
+    updated = False
+    in_table = False
+    table_end = -1
+    
+    for i, line in enumerate(lines):
+        # 检测表格开始
+        if '商品基础信息' in line:
+            in_table = True
+            continue
+        if in_table:
+            # 表格结束标志：空行或下一个 ## 标题
+            if line.strip() == '' or line.startswith('## '):
+                table_end = i
+                break
+            # 检测分隔线 |---|---|
+            if re.match(r'\|[-\s|]+\|', line):
+                continue
+            match = pattern.search(line)
+            if match:
+                # 替换该行的值
+                lines[i] = f'| {field} | {new_value} |'
+                updated = True
+                found = True
+    
+    if not found and table_end >= 0:
+        # 字段不存在，在表格末尾插入新行
+        lines.insert(table_end, f'| {field} | {new_value} |')
+        updated = True
+    
+    if updated:
+        path.write_text("\n".join(lines), encoding="utf-8")
+    return updated

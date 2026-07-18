@@ -8,7 +8,7 @@
 
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame,
-    QScrollArea, QSizePolicy, QDialog,
+    QScrollArea, QSizePolicy, QDialog, QDoubleSpinBox,
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
@@ -64,6 +64,7 @@ class FrameCard(QFrame):
 
     clicked = Signal(int)       # 卡片点击
     image_clicked = Signal(str) # 图片点击（传路径）
+    duration_changed = Signal(int, float)  # 帧时长修改（帧索引, 新时长）
 
     def __init__(self, frame_data: dict, index: int, font_size: int = 15):
         super().__init__()
@@ -126,11 +127,30 @@ class FrameCard(QFrame):
         content = QVBoxLayout()
         content.setSpacing(6)
 
-        # 时长
+        # 时长（可编辑）
         duration = self.frame_data.get("duration", 0)
-        dur_label = QLabel(f"⏱ {duration:.1f}s")
-        dur_label.setStyleSheet(f"color: #a6adc8; font-size: {fs - 1}px; background: transparent;")
-        content.addWidget(dur_label)
+        dur_row = QHBoxLayout()
+        dur_row.setSpacing(4)
+        dur_icon = QLabel("⏱")
+        dur_icon.setStyleSheet(f"color: #585b70; font-size: {fs - 1}px; background: transparent;")
+        dur_icon.setFixedWidth(fs)
+        dur_row.addWidget(dur_icon)
+        self.duration_spin = QDoubleSpinBox()
+        self.duration_spin.setRange(0.5, 30.0)
+        self.duration_spin.setSingleStep(0.5)
+        self.duration_spin.setDecimals(1)
+        self.duration_spin.setSuffix("s")
+        self.duration_spin.setValue(duration)
+        self.duration_spin.setButtonSymbols(QDoubleSpinBox.NoButtons)
+        self.duration_spin.setFixedWidth(fs * 5)
+        self.duration_spin.setStyleSheet(
+            f"QDoubleSpinBox {{ color: #a6adc8; font-size: {fs - 1}px; "
+            f"background: #313244; border: 1px solid #45475a; border-radius: 4px; padding: 2px 6px; }}"
+        )
+        self.duration_spin.valueChanged.connect(self._on_duration_spin_changed)
+        dur_row.addWidget(self.duration_spin)
+        dur_row.addStretch()
+        content.addLayout(dur_row)
 
         # 图片提示词 EN/CN
         self._add_field(content, "图片提示词",
@@ -267,6 +287,11 @@ class FrameCard(QFrame):
             self.image_label.setStyleSheet("background: transparent; border-radius: 6px;")
             self.image_label.setToolTip("点击放大")
 
+    def _on_duration_spin_changed(self, value: float):
+        """帧时长被修改"""
+        self.frame_data["duration"] = round(value, 1)
+        self.duration_changed.emit(self.index, round(value, 1))
+
     def _on_image_click(self, event):
         """点击缩略图放大"""
         img_path = self.frame_data.get("image_path")
@@ -287,6 +312,7 @@ class StoryboardView(QWidget):
     """分镜预览视图 — 纵向卡片流，上下滚动浏览所有帧"""
 
     frame_selected = Signal(int)  # 选中帧变化
+    frame_duration_changed = Signal(int, float)  # 帧时长修改（帧索引, 新时长）
 
     def __init__(self):
         super().__init__()
@@ -363,6 +389,7 @@ class StoryboardView(QWidget):
             card = FrameCard(frame, i, font_size=self.font_size)
             card.clicked.connect(self._on_card_clicked)
             card.image_clicked.connect(self._on_image_clicked)
+            card.duration_changed.connect(self._on_duration_changed)
             self.container_layout.addWidget(card)
             self.cards.append(card)
 
@@ -384,6 +411,12 @@ class StoryboardView(QWidget):
         if image_path and Path(image_path).exists():
             dlg = ImagePreviewDialog(image_path, self)
             dlg.exec()
+
+    def _on_duration_changed(self, index: int, duration: float):
+        """帧时长被修改"""
+        if 0 <= index < len(self.frames):
+            self.frames[index]["duration"] = duration
+        self.frame_duration_changed.emit(index, duration)
 
     def reload_font_size(self):
         """重新加载字体大小并刷新视图"""
@@ -411,6 +444,7 @@ class StoryboardView(QWidget):
             card = FrameCard(frame, i, font_size=self.font_size)
             card.clicked.connect(self._on_card_clicked)
             card.image_clicked.connect(self._on_image_clicked)
+            card.duration_changed.connect(self._on_duration_changed)
             self.container_layout.addWidget(card)
             self.cards.append(card)
 

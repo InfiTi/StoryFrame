@@ -2,6 +2,11 @@
 
 import sys
 import os
+import ctypes
+
+# 隐藏 Windows 控制台窗口
+if sys.platform == "win32":
+    ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
 
 # 确保项目根目录在 path 中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
