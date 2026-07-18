@@ -418,8 +418,7 @@ class MainWindow(QMainWindow):
             "QPushButton:disabled { background: #1f2233; color: #3b4056; }"
         )
         self.doubao_img_btn.setEnabled(False)
-        self.doubao_img_btn.setMenu(self._build_doubao_menu("image"))
-        self.doubao_img_btn.setStyleSheet(self.doubao_img_btn.styleSheet() + "QPushButton::menu-indicator { image: none; }")
+        self.doubao_img_btn.clicked.connect(lambda: self._show_doubao_menu("image"))
         bottom_bar.addWidget(self.doubao_img_btn)
 
         self.doubao_video_btn = QPushButton("🎬 豆包视频")
@@ -431,7 +430,7 @@ class MainWindow(QMainWindow):
             "QPushButton::menu-indicator { image: none; }"
         )
         self.doubao_video_btn.setEnabled(False)
-        self.doubao_video_btn.setMenu(self._build_doubao_menu("video"))
+        self.doubao_video_btn.clicked.connect(lambda: self._show_doubao_menu("video"))
         bottom_bar.addWidget(self.doubao_video_btn)
 
         right_layout.addLayout(bottom_bar)
@@ -902,16 +901,23 @@ class MainWindow(QMainWindow):
         """选中某帧"""
         self.generate_single_btn.setEnabled(True)
 
-    def _build_doubao_menu(self, kind: str):
-        """构建豆包提示词的中/英文选择菜单"""
+    def _show_doubao_menu(self, kind: str):
+        """点击按钮时弹出中文/英文选择菜单"""
+        if not self.current_frames_data:
+            self.status_label.setText("请先生成分镜脚本")
+            return
         from PySide6.QtWidgets import QMenu
-        menu = QMenu()
-        menu.setStyleSheet("QMenu { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2e42; } QMenu::item:selected { background: #283457; }")
-        act_cn = menu.addAction("中文")
-        act_en = menu.addAction("英文")
+        from PySide6.QtCore import QPoint
+        btn = self.doubao_img_btn if kind == "image" else self.doubao_video_btn
+        menu = QMenu(self)
+        menu.setStyleSheet("QMenu { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2e42; padding: 4px; } QMenu::item { padding: 4px 24px; border-radius: 4px; } QMenu::item:selected { background: #283457; }")
+        act_cn = menu.addAction("🇨🇳 中文")
+        act_en = menu.addAction("🇬🇧 英文")
         act_cn.triggered.connect(lambda: self._copy_doubao_prompt(kind, "cn"))
         act_en.triggered.connect(lambda: self._copy_doubao_prompt(kind, "en"))
-        return menu
+        # 在按钮下方弹出
+        pos = btn.mapToGlobal(QPoint(0, btn.height()))
+        menu.exec(pos)
 
     def _copy_doubao_prompt(self, kind: str, lang: str):
         """统一复制豆包提示词"""
