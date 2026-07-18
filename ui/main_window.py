@@ -409,52 +409,7 @@ class MainWindow(QMainWindow):
         bottom_bar.addWidget(self.generate_single_btn)
         bottom_bar.addStretch()
 
-        # 复制按钮组
-        copy_group_label = QLabel("复制全部帧：")
-        copy_group_label.setStyleSheet("color: #565f89; font-size: 12px;")
-        bottom_bar.addWidget(copy_group_label)
-
-        self.copy_prompt_en_btn = QPushButton("提示词EN")
-        self.copy_prompt_en_btn.setFixedHeight(30)
-        self.copy_prompt_en_btn.setEnabled(False)
-        self.copy_prompt_en_btn.clicked.connect(lambda: self._copy_all_field("image_prompt"))
-        bottom_bar.addWidget(self.copy_prompt_en_btn)
-
-        self.copy_prompt_cn_btn = QPushButton("提示词CN")
-        self.copy_prompt_cn_btn.setFixedHeight(30)
-        self.copy_prompt_cn_btn.setEnabled(False)
-        self.copy_prompt_cn_btn.clicked.connect(lambda: self._copy_all_field("image_prompt_cn"))
-        bottom_bar.addWidget(self.copy_prompt_cn_btn)
-
-        self.copy_motion_en_btn = QPushButton("镜头EN")
-        self.copy_motion_en_btn.setFixedHeight(30)
-        self.copy_motion_en_btn.setEnabled(False)
-        self.copy_motion_en_btn.clicked.connect(lambda: self._copy_all_field("camera_motion"))
-        bottom_bar.addWidget(self.copy_motion_en_btn)
-
-        self.copy_motion_cn_btn = QPushButton("镜头CN")
-        self.copy_motion_cn_btn.setFixedHeight(30)
-        self.copy_motion_cn_btn.setEnabled(False)
-        self.copy_motion_cn_btn.clicked.connect(lambda: self._copy_all_field("camera_motion_cn"))
-        bottom_bar.addWidget(self.copy_motion_cn_btn)
-
-        self.copy_hint_en_btn = QPushButton("动态EN")
-        self.copy_hint_en_btn.setFixedHeight(30)
-        self.copy_hint_en_btn.setEnabled(False)
-        self.copy_hint_en_btn.clicked.connect(lambda: self._copy_all_field("motion_hint"))
-        bottom_bar.addWidget(self.copy_hint_en_btn)
-
-        self.copy_hint_cn_btn = QPushButton("动态CN")
-        self.copy_hint_cn_btn.setFixedHeight(30)
-        self.copy_hint_cn_btn.setEnabled(False)
-        self.copy_hint_cn_btn.clicked.connect(lambda: self._copy_all_field("motion_hint_cn"))
-        bottom_bar.addWidget(self.copy_hint_cn_btn)
-
-        # 豆包提示词按钮
-        doubao_sep = QLabel("│")
-        doubao_sep.setStyleSheet("color: #2a2e3f; font-size: 14px;")
-        bottom_bar.addWidget(doubao_sep)
-
+        # 豆包提示词按钮（点击弹出中文/英文选择）
         self.doubao_img_btn = QPushButton("📎 豆包图片")
         self.doubao_img_btn.setFixedHeight(30)
         self.doubao_img_btn.setStyleSheet(
@@ -463,7 +418,8 @@ class MainWindow(QMainWindow):
             "QPushButton:disabled { background: #1f2233; color: #3b4056; }"
         )
         self.doubao_img_btn.setEnabled(False)
-        self.doubao_img_btn.clicked.connect(self._copy_doubao_image_prompt)
+        self.doubao_img_btn.setMenu(self._build_doubao_menu("image"))
+        self.doubao_img_btn.setStyleSheet(self.doubao_img_btn.styleSheet() + "QPushButton::menu-indicator { image: none; }")
         bottom_bar.addWidget(self.doubao_img_btn)
 
         self.doubao_video_btn = QPushButton("🎬 豆包视频")
@@ -472,9 +428,10 @@ class MainWindow(QMainWindow):
             "QPushButton { background: #e0af68; color: #0f1117; font-size: 11px; font-weight: bold; border-radius: 6px; border: none; padding: 2px 12px; }"
             "QPushButton:hover { background: #f0c878; }"
             "QPushButton:disabled { background: #1f2233; color: #3b4056; }"
+            "QPushButton::menu-indicator { image: none; }"
         )
         self.doubao_video_btn.setEnabled(False)
-        self.doubao_video_btn.clicked.connect(self._copy_doubao_video_prompt)
+        self.doubao_video_btn.setMenu(self._build_doubao_menu("video"))
         bottom_bar.addWidget(self.doubao_video_btn)
 
         right_layout.addLayout(bottom_bar)
@@ -871,12 +828,6 @@ class MainWindow(QMainWindow):
         self.export_json_btn.setEnabled(True)
         self.export_md_btn.setEnabled(True)
         self.export_pkg_btn.setEnabled(True)
-        self.copy_prompt_en_btn.setEnabled(True)
-        self.copy_prompt_cn_btn.setEnabled(True)
-        self.copy_motion_en_btn.setEnabled(True)
-        self.copy_motion_cn_btn.setEnabled(True)
-        self.copy_hint_en_btn.setEnabled(True)
-        self.copy_hint_cn_btn.setEnabled(True)
         self.doubao_img_btn.setEnabled(True)
         self.doubao_video_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
@@ -943,12 +894,6 @@ class MainWindow(QMainWindow):
         self.export_json_btn.setEnabled(True)
         self.export_md_btn.setEnabled(True)
         self.export_pkg_btn.setEnabled(True)
-        self.copy_prompt_en_btn.setEnabled(True)
-        self.copy_prompt_cn_btn.setEnabled(True)
-        self.copy_motion_en_btn.setEnabled(True)
-        self.copy_motion_cn_btn.setEnabled(True)
-        self.copy_hint_en_btn.setEnabled(True)
-        self.copy_hint_cn_btn.setEnabled(True)
         self.doubao_img_btn.setEnabled(True)
         self.doubao_video_btn.setEnabled(True)
         self.status_label.setText(f"已加载缓存版本：{len(frames)} 帧")
@@ -957,34 +902,62 @@ class MainWindow(QMainWindow):
         """选中某帧"""
         self.generate_single_btn.setEnabled(True)
 
-    def _copy_all_field(self, field_name: str):
-        """复制所有帧的指定字段"""
+    def _build_doubao_menu(self, kind: str):
+        """构建豆包提示词的中/英文选择菜单"""
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu()
+        menu.setStyleSheet("QMenu { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2e42; } QMenu::item:selected { background: #283457; }")
+        act_cn = menu.addAction("中文")
+        act_en = menu.addAction("英文")
+        act_cn.triggered.connect(lambda: self._copy_doubao_prompt(kind, "cn"))
+        act_en.triggered.connect(lambda: self._copy_doubao_prompt(kind, "en"))
+        return menu
+
+    def _copy_doubao_prompt(self, kind: str, lang: str):
+        """统一复制豆包提示词"""
         if not self.current_frames_data:
             return
-        # 长字段（image_prompt）用空行分隔，短字段用换行分隔
-        multiline = field_name in ("image_prompt", "image_prompt_cn")
-        lines = []
-        for f in self.current_frames_data:
-            val = f.get(field_name, "")
-            if multiline:
-                lines.append(f"[Frame {f.get('frame', '?')}]\n{val}")
-            else:
-                lines.append(f"[Frame {f.get('frame', '?')}] {val}")
-        sep = "\n\n" if multiline else "\n"
-        text = sep.join(lines)
-        QApplication.clipboard().setText(text)
+        category = self._get_product_category()
+        frames = self.current_frames_data
+        frame_count = len(frames)
+        template = TEMPLATES[self.style_combo.currentIndex()]
 
-        # 状态提示
-        field_labels = {
-            "image_prompt": "图片提示词（英文）",
-            "image_prompt_cn": "图片提示词（中文）",
-            "camera_motion": "镜头运动（英文）",
-            "camera_motion_cn": "镜头运动（中文）",
-            "motion_hint": "画面动态（英文）",
-            "motion_hint_cn": "画面动态（中文）",
-        }
-        label = field_labels.get(field_name, field_name)
-        self.status_label.setText(f"已复制 {len(self.current_frames_data)} 帧{label}")
+        from core.prompt_loader import get_doubao_image_prompt, get_doubao_video_prompt
+        if kind == "image":
+            text = get_doubao_image_prompt(category, frames, frame_count, negative_words=template.negative_words)
+            label = "图片"
+        else:
+            bgm_style = self.bgm_combo.currentText()
+            text = get_doubao_video_prompt(category, frames, frame_count, bgm_style, negative_words=template.negative_words)
+            label = "视频"
+        if not text:
+            return
+
+        # 如果选英文，逐帧替换为英文字段
+        if lang == "en":
+            import re
+            for f in frames:
+                cn_img = f.get("image_prompt_cn", "")
+                en_img = f.get("image_prompt", "")
+                cn_cam = f.get("camera_motion_cn", "")
+                en_cam = f.get("camera_motion", "")
+                cn_hint = f.get("motion_hint_cn", "")
+                en_hint = f.get("motion_hint", "")
+                if cn_img and en_img:
+                    cn_clean = re.sub(r"\s*[，,]?\s*主体居中.*?(安全区|留白).*?$", "", cn_img, flags=re.IGNORECASE).strip()
+                    cn_clean = re.sub(r"\s*[，,]?\s*(无文字|无水印|no text|no words|no letters|no logo|no watermark|no label|no hands|no people).*?$", "", cn_clean, flags=re.IGNORECASE).strip()
+                    en_clean = re.sub(r"\s*no text.*?$", "", en_img, flags=re.IGNORECASE).strip()
+                    en_clean = re.sub(r"\s*Centered.*?(safe zone|whitespace).*?$", "", en_clean, flags=re.IGNORECASE).strip()
+                    if cn_clean and en_clean:
+                        text = text.replace(f"画面描述：{cn_clean}", f"画面描述：{en_clean}")
+                if cn_cam and en_cam:
+                    text = text.replace(f"镜头运动：{cn_cam}", f"镜头运动：{en_cam}")
+                if cn_hint and en_hint:
+                    text = text.replace(f"画面动态：{cn_hint}", f"画面动态：{en_hint}")
+
+        QApplication.clipboard().setText(text)
+        lang_label = "中文" if lang == "cn" else "英文"
+        self.status_label.setText(f"已复制豆包{label}提示词（{lang_label} {frame_count} 帧）")
 
     def _get_product_summary(self) -> str:
         """获取商品摘要信息"""
@@ -1011,41 +984,6 @@ class MainWindow(QMainWindow):
         # 如果没填类目，从名称里尝试提取
         name = self.product_name_input.text().strip()
         return name if name else "零食"
-
-    def _copy_doubao_image_prompt(self):
-        """复制豆包图片生成提示词"""
-        if not self.current_frames_data:
-            return
-        category = self._get_product_category()
-        frames = self.current_frames_data
-        frame_count = len(frames)
-        template = TEMPLATES[self.style_combo.currentIndex()]
-
-        from core.prompt_loader import get_doubao_image_prompt
-        text = get_doubao_image_prompt(category, frames, frame_count, negative_words=template.negative_words)
-        if not text:
-            return  # 模板加载失败
-
-        QApplication.clipboard().setText(text)
-        self.status_label.setText(f"已复制豆包图片提示词（{frame_count} 帧）")
-
-    def _copy_doubao_video_prompt(self):
-        """复制豆包视频生成提示词"""
-        if not self.current_frames_data:
-            return
-        category = self._get_product_category()
-        frames = self.current_frames_data
-        frame_count = len(frames)
-        bgm_style = self.bgm_combo.currentText()
-        template = TEMPLATES[self.style_combo.currentIndex()]
-
-        from core.prompt_loader import get_doubao_video_prompt
-        text = get_doubao_video_prompt(category, frames, frame_count, bgm_style, negative_words=template.negative_words)
-        if not text:
-            return  # 模板加载失败
-
-        QApplication.clipboard().setText(text)
-        self.status_label.setText(f"已复制豆包视频提示词（{frame_count} 帧）")
 
     def _generate_single_image(self):
         """生成选中帧的图片"""
