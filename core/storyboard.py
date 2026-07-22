@@ -30,6 +30,7 @@ class StoryboardFrame:
     video_prompt_cn: str = ""         # 视频生成指令中文对照
     description: str = ""             # 画面内容中文描述
     transition: str = ""             # 帧间过渡方式（hard cut / whip pan / speed ramp / fade）
+    motion_phase: str = ""            # 动作相位（pre-action / mid-action / post-action / static）
     image_path: Optional[str] = None  # 生成的图片路径
 
 
@@ -332,6 +333,7 @@ def generate_storyboard(
             video_prompt_cn=item.get("video_prompt_cn", ""),
             description=item.get("description", ""),
             transition=item.get("transition", "none"),
+            motion_phase=item.get("motion_phase", "static"),
         )
         frames.append(frame)
 
@@ -498,6 +500,7 @@ def generate_frame_detail(
         video_prompt_cn=result.get("video_prompt_cn", ""),
         description=result.get("description", description),
         transition=result.get("transition", transition),
+        motion_phase=result.get("motion_phase", "static"),
     )
 
 
@@ -712,4 +715,5 @@ def regenerate_frame(
         video_prompt_cn=result.get("video_prompt_cn", ""),
         description=result.get("description", description),
         transition=result.get("transition", old_frame.transition or "none"),
+        motion_phase=result.get("motion_phase", old_frame.motion_phase or "static"),
     )

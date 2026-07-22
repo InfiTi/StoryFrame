@@ -46,17 +46,55 @@
 - camera_motion 控制在 15-30 词，必须包含：起始构图 → 运动方向和距离 → 终止构图 + 停顿状态（如 hold/stop）
 - description 控制在 15-25 字，简洁说明该帧的镜头功能
 
+## ⚠️ 动作相位规则（核心约束，必须严格遵守）
+
+### 问题背景
+图片提示词描述的是一帧静态画面，视频模型会以这张图作为视频的起始帧。如果图片画的是动作的「结束态」（比如已经压缩扁了的肉脯），视频指令却说「压缩→弹回」，视频模型会困惑——图片已经压扁了，还要怎么压？
+
+### 四阶段相位定义
+每帧必须标注 `motion_phase`，表示图片画面处于动作的哪个阶段：
+
+| 相位 | 含义 | 图片描述的内容 | 视频运动方向 |
+|------|------|--------------|------------|
+| pre-action | 动作即将发生 | 产品处于自然静止状态，但画面中有明确的「即将动作」的视觉暗示（如轻微形变前兆、张力感） | 从静止开始执行完整动作 |
+| mid-action | 动作进行中 | 产品处于运动过程中的某个瞬间定格（如碎片飞到半空、拉丝拉到一半） | 从当前中间状态继续完成动作 |
+| post-action | 动作已完成 | 产品处于动作结束后的状态（如碎片散落定格、形变完成） | 从结束态缓慢回归静止或轻微回弹 |
+| static | 无动作 | 产品完全静止展示 | 仅镜头运动，产品不动 |
+
+### 相位选择规则
+1. **第1帧（爆点开场）**：优先用 `mid-action`（最有视觉冲击力的瞬间定格）
+2. **中间帧**：根据卖点选择 `pre-action`（期待感）或 `mid-action`（展示质感瞬间）
+3. **最后一帧**：用 `post-action` 或 `static`（稳定收尾）
+4. **如果 motion_hint 包含「碎裂/飞溅/爆发」** → 必须 `mid-action`（捕捉最戏剧性的瞬间）
+5. **如果 motion_hint 包含「压缩/按压」** → 必须 `pre-action`（图片画自然状态，视频里再压）
+6. **如果 motion_hint 包含「拉丝/延展」** → 必须 `mid-action`（拉到一半的瞬间）
+7. **如果 motion_hint 包含「回弹/恢复」** → 必须 `post-action`（形变完成后的回弹瞬间）
+
+### image_prompt 与 motion_phase 的一致性约束
+- `pre-action`：image_prompt 描述产品自然状态，但通过构图/光影制造「即将动作」的张力（如轻微倾斜、表面张力可见、接触点有压力暗示）
+- `mid-action`：image_prompt 描述动作进行到 40-60% 的瞬间（不要画 100% 完成的动作）
+- `post-action`：image_prompt 描述动作刚结束的瞬间（有余韵，不是完全静止）
+- `static`：image_prompt 描述产品最完美的静止展示状态
+
+### video_prompt 与 motion_phase 的一致性约束
+video_prompt 的「初始状态」必须与 image_prompt 描述的画面状态严格对应：
+- `pre-action` → video_prompt 初始状态 = 产品静止 → 运动轨迹 = 执行完整动作
+- `mid-action` → video_prompt 初始状态 = 动作进行中（描述当前中间状态）→ 运动轨迹 = 从中间状态继续完成剩余动作
+- `post-action` → video_prompt 初始状态 = 动作刚结束 → 运动轨迹 = 缓慢回归或轻微回弹
+- `static` → video_prompt 初始状态 = 静止 → 运动轨迹 = 仅镜头运动，产品保持静止
+
 ## 每帧输出字段（中英文对照）
 - frame: 帧序号（从1开始）
 - duration: 该帧持续秒数
-- image_prompt: 英文，用于 AI 生图的完整提示词
-- image_prompt_cn: 中文，image_prompt 的中文翻译
+- motion_phase: 动作相位（pre-action / mid-action / post-action / static），决定图片状态与视频运动的对应关系
+- image_prompt: 英文，用于 AI 生图的完整提示词，必须与 motion_phase 一致
+- image_prompt_cn: 中文，image_prompt 的纯中文翻译
 - camera_motion: 英文，镜头运动（如 fast push-in, hard stop, quick orbit, sudden pull back），必须包含起止构图+运动时长+停顿状态
 - camera_motion_cn: 中文，镜头运动中文描述
 - motion_hint: 英文，画面内产品的动态趋势
 - motion_hint_cn: 中文，画面动态中文描述
 - transition: 英文，从上一帧到本帧的过渡方式（hard cut / whip pan / speed ramp / fade），第1帧填 none
-- video_prompt: 英文，写给视频生成模型的完整动作剧本，格式：[初始状态] → [运动轨迹] → [镜头运动] → [速度节奏] → [结束状态]。不是静态画面描述，是动作指令序列
+- video_prompt: 英文，写给视频生成模型的完整动作剧本，格式：[初始状态（与image_prompt一致）] → [运动轨迹] → [镜头运动] → [速度节奏] → [结束状态]。初始状态必须与 motion_phase 对应
 - video_prompt_cn: 中文，video_prompt 的中文翻译
 - description: 中文，简短说明这一帧展示什么
 
@@ -65,15 +103,16 @@
   {
     "frame": 1,
     "duration": 1.2,
-    "image_prompt": "...",
-    "image_prompt_cn": "...",
+    "motion_phase": "mid-action",
+    "image_prompt": "A crispy cracker mid-shatter, 3-4 fragments frozen mid-air at 40% of their outward trajectory, center of cracker still intact but cracking visible. Centered medium shot, top-down 45-degree angle. Golden brown surface with visible texture grains, rough broken edges showing flaky layers. Soft diffused studio lighting with strong rim light on flying fragments. Clean off-white background. Product centered, fragments within 80% frame area. no text, no words, no letters, no logo, no watermark, no label",
+    "image_prompt_cn": "酥脆饼干碎裂进行中，3-4块碎片定格在向外飞溅轨迹的40%位置，饼干中心仍然完整但裂纹可见。中心中景，俯拍45度角。金棕色表面可见颗粒纹理，断裂边缘粗糙显示酥层。柔光棚拍，碎片有强烈轮廓光。干净米白背景。产品居中，碎片在画面80%区域内。无文字、无水印、无标签",
     "camera_motion": "centered medium shot → fast push-in 30% closer → extreme close-up, hard stop hold 0.2s",
     "camera_motion_cn": "中心中景 → 快速推进30% → 极近景，急停保持0.2秒",
     "motion_hint": "crispy cracker shatters center-screen, 3-4 fragments fly outward radially at burst speed (0.3s), decelerate and freeze at 15% frame width, particles <5% frame size",
     "motion_hint_cn": "酥脆饼干中心碎裂，3-4块碎片以爆发速度向外放射飞溅（0.3秒），减速定格在画面15%宽度处，碎屑颗粒小于画面5%",
-    "video_prompt": "Cracker sits centered on clean surface → fragments explode radially outward at burst speed, decelerating over 0.3s → camera fast push-in 30% closer to amplify impact, hard stop at close-up → speed: burst to freeze → fragments freeze in scattered positions, product center intact",
-    "video_prompt_cn": "饼干静止于画面中心 → 碎片以爆发速度向外放射飞溅，0.3秒后减速 → 镜头快速推进30%放大冲击瞬间，急停于近景 → 速度：爆发后定格 → 碎片定格在散射位置，产品中心完整",
+    "video_prompt": "[Initial: cracker mid-shatter, fragments at 40% trajectory, cracks visible but center intact] → [fragments continue flying outward radially, decelerating over 0.3s to freeze at 15% frame width] → [camera fast push-in 30% closer to amplify impact, hard stop at close-up] → [speed: burst to freeze] → [fragments frozen in scattered positions, product center fully broken but recognizable]",
+    "video_prompt_cn": "[初始：饼干碎裂进行中，碎片在40%轨迹处，裂纹可见但中心完整] → [碎片继续向外放射飞溅，0.3秒后减速定格在画面15%宽度处] → [镜头快速推进30%放大冲击瞬间，急停于近景] → [速度：爆发后定格] → [碎片定格在散射位置，产品中心完全碎裂但仍可辨认]",
     "transition": "none",
-    "description": "..."
+    "description": "饼干碎裂爆点开场"
   }
 ]

@@ -322,6 +322,7 @@ def get_doubao_video_prompt(
     for i, f in enumerate(frames):
         frame_num = f.get("frame", i + 1)
         duration = f.get("duration", 0)
+        motion_phase = f.get("motion_phase", "static")
         # 提取画面描述，去掉尾部的负向词和构图安全区描述
         img_desc = _pick("image_prompt_cn", "image_prompt", "")
         # 去掉安全区描述
@@ -335,9 +336,18 @@ def get_doubao_video_prompt(
         camera = _pick("camera_motion_cn", "camera_motion", "—")
         video_prompt_text = _pick("video_prompt_cn", "video_prompt", "")
 
+        # 相位中文映射
+        phase_cn = {
+            "pre-action": "动作前（产品静止，即将开始动作）",
+            "mid-action": "动作中（产品处于运动中间状态）",
+            "post-action": "动作后（产品处于动作结束状态）",
+            "static": "静止展示（无产品动作）",
+        }.get(motion_phase, "静止展示")
+
         # 如果有完整的 video_prompt，直接使用结构化剧本
         if video_prompt_text:
             block = f"### 第 {frame_num} 帧（{duration:.1f}s）\n"
+            block += f"**参考图相位**：{phase_cn}\n"
             block += f"{video_prompt_text}\n"
             transition = f.get("transition", "")
             if transition and transition.lower() != "none":
@@ -359,9 +369,10 @@ def get_doubao_video_prompt(
             elif "ease-in-out" in motion.lower() or "先快后慢" in motion:
                 speed_rhythm = "先快后慢"
 
-        block = f"### 第 {frame_num} 帧（{duration:.1f}s）\n"
+        block = f"### 第 {frame_num} 帧（{duration:.1f}s)\n"
+        block += f"**参考图相位**：{phase_cn}\n"
         if img_desc:
-            block += f"- 起始画面：{img_desc}\n"
+            block += f"- 初始画面（与参考图一致）：{img_desc}\n"
         block += f"- 运动指令：{motion}\n"
         block += f"- 镜头运动：{camera}\n"
         block += f"- 速度节奏：{speed_rhythm}\n"
