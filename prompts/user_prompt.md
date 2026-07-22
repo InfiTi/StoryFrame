@@ -32,5 +32,14 @@ BGM风格：{bgm_style}
 - image_prompt 必须融入 {style_words} 视觉风格关键词
 - camera_motion 必须融入 {camera_words} 镜头风格关键词，且与 {bgm_style} 节奏匹配
 - motion_hint 必须严格基于 {product_texture} 质感设计动态，不得出现与物理属性矛盾的动作
+- video_prompt 必须是完整的动作剧本：初始状态 → 运动轨迹 → 镜头运动 → 速度节奏 → 结束状态
+- camera_motion 必须包含起止构图+运动距离+停顿状态
+
+【帧间连贯性要求】
+- 每帧的结束画面必须与下一帧的起始画面自然衔接，不允许突兀跳转
+- 上一帧产品停留的位置 = 下一帧产品出现的位置（除非 transition 为 hard cut）
+- 连续帧的镜头运动方向不要全部相同，避免单调（如连续3帧 push-in 不可接受）
+- 除第1帧和最后一帧外，相邻帧的运动速度曲线应该有变化（不要全部 burst 或全部 constant）
+- transition 为 whip pan / speed ramp / fade 时，前后帧的画面动态需要有呼应（如 whip pan 前帧结尾产品偏右，后帧开头产品从左进入）
 
 请输出 JSON 数组。

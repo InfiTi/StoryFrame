@@ -15,39 +15,11 @@ class LLMClient:
         self.client = httpx.Client(timeout=300.0)
 
     def chat(self, messages: list, temperature: float = 0.8) -> str:
-        """发送聊天请求，返回文本响应"""
-        url = f"{self.base_url}/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-        }
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        """发送聊天请求，返回文本响应
 
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": 16384,
-            "stream": False,
-        }
-        # 部分模型支持禁用 reasoning 以节省 token
-        try:
-            payload["chat_template_kwargs"] = {"enable_thinking": False}
-        except Exception:
-            pass
-
-        try:
-            resp = self.client.post(url, json=payload, headers=headers)
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            # 把响应体也带上，方便调试
-            body = e.response.text[:500] if e.response else "(no body)"
-            raise RuntimeError(f"HTTP {e.response.status_code}: {body}") from e
-        except httpx.RequestError as e:
-            raise RuntimeError(f"网络请求失败: {e}") from e
-
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        统一用流式收集结果，避免某些 API 非流式超时。
+        """
+        return "".join(self.chat_stream(messages, temperature))
 
     def chat_stream(self, messages: list, temperature: float = 0.8):
         """流式聊天，yield 每个文本片段"""
@@ -65,11 +37,9 @@ class LLMClient:
             "max_tokens": 16384,
             "stream": True,
         }
-        # 禁用 reasoning 以节省 token
-        try:
+        # LMStudio 禁用 reasoning 的专有参数，仅本地模型使用
+        if "localhost" in self.base_url or "127.0.0.1" in self.base_url:
             payload["chat_template_kwargs"] = {"enable_thinking": False}
-        except Exception:
-            pass
 
         with self.client.stream("POST", url, json=payload, headers=headers, timeout=300.0) as resp:
             resp.raise_for_status()
@@ -82,10 +52,12 @@ class LLMClient:
                         break
                     try:
                         chunk = json.loads(data_str)
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            yield content
+                        choices = chunk.get("choices", [])
+                        if choices:
+                            delta = choices[0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                yield content
                     except json.JSONDecodeError:
                         continue
 

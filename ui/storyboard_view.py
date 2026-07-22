@@ -8,7 +8,7 @@
 
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame,
-    QScrollArea, QSizePolicy, QDialog, QDoubleSpinBox,
+    QScrollArea, QSizePolicy, QDialog, QDoubleSpinBox, QPushButton,
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
@@ -65,6 +65,7 @@ class FrameCard(QFrame):
     clicked = Signal(int)       # 卡片点击
     image_clicked = Signal(str) # 图片点击（传路径）
     duration_changed = Signal(int, float)  # 帧时长修改（帧索引, 新时长）
+    regenerate_clicked = Signal(int)  # 重新生成此帧（帧索引）
 
     def __init__(self, frame_data: dict, index: int, font_size: int = 15):
         super().__init__()
@@ -150,6 +151,20 @@ class FrameCard(QFrame):
         self.duration_spin.valueChanged.connect(self._on_duration_spin_changed)
         dur_row.addWidget(self.duration_spin)
         dur_row.addStretch()
+
+        # 重新生成按钮
+        self.regen_btn = QPushButton("🔄")
+        self.regen_btn.setFixedSize(fs + 6, fs + 6)
+        self.regen_btn.setToolTip("重新生成此帧提示词")
+        self.regen_btn.setCursor(Qt.PointingHandCursor)
+        self.regen_btn.setStyleSheet(
+            f"QPushButton {{ border: none; background: transparent; font-size: {fs}px; "
+            f"padding: 0px; }}"
+            f"QPushButton:hover {{ background: #313244; border-radius: 4px; }}"
+        )
+        self.regen_btn.clicked.connect(lambda: self.regenerate_clicked.emit(self.index))
+        dur_row.addWidget(self.regen_btn)
+
         content.addLayout(dur_row)
 
         # 图片提示词 EN/CN
@@ -313,6 +328,7 @@ class StoryboardView(QWidget):
 
     frame_selected = Signal(int)  # 选中帧变化
     frame_duration_changed = Signal(int, float)  # 帧时长修改（帧索引, 新时长）
+    frame_regenerate = Signal(int)  # 重新生成帧（帧索引）
 
     def __init__(self):
         super().__init__()
@@ -390,6 +406,7 @@ class StoryboardView(QWidget):
             card.clicked.connect(self._on_card_clicked)
             card.image_clicked.connect(self._on_image_clicked)
             card.duration_changed.connect(self._on_duration_changed)
+            card.regenerate_clicked.connect(self.frame_regenerate)
             self.container_layout.addWidget(card)
             self.cards.append(card)
 
@@ -398,6 +415,56 @@ class StoryboardView(QWidget):
         # 默认选中第一帧
         if frames:
             self._on_card_clicked(0)
+
+    def add_frame(self, frame: dict, index: int = -1):
+        """追加单帧到视图末尾（或指定位置插入），用于逐帧实时显示"""
+        # 移除空状态
+        if self.empty_label.parent() is not None:
+            self.container_layout.removeWidget(self.empty_label)
+        # 移除末尾的 stretch
+        stretch_item = None
+        if self.container_layout.count() > 0:
+            last_item = self.container_layout.takeAt(self.container_layout.count() - 1)
+            if last_item.spacerItem():
+                stretch_item = last_item
+
+        if index < 0 or index >= len(self.frames):
+            # 末尾追加
+            self.frames.append(frame)
+            card = FrameCard(frame, len(self.frames) - 1, font_size=self.font_size)
+            card.clicked.connect(self._on_card_clicked)
+            card.image_clicked.connect(self._on_image_clicked)
+            card.duration_changed.connect(self._on_duration_changed)
+            card.regenerate_clicked.connect(self.frame_regenerate)
+            self.container_layout.addWidget(card)
+            self.cards.append(card)
+        else:
+            # 指定位置插入
+            self.frames.insert(index, frame)
+            card = FrameCard(frame, index, font_size=self.font_size)
+            card.clicked.connect(self._on_card_clicked)
+            card.image_clicked.connect(self._on_image_clicked)
+            card.duration_changed.connect(self._on_duration_changed)
+            card.regenerate_clicked.connect(self.frame_regenerate)
+            self.container_layout.insertWidget(index, card)
+            self.cards.insert(index, card)
+            # 后续卡片索引 +1
+            for i in range(index + 1, len(self.cards)):
+                self.cards[i].index = i
+
+        # 还原 stretch
+        if stretch_item:
+            self.container_layout.addItem(stretch_item)
+        else:
+            self.container_layout.addStretch()
+
+        # 滚动到新帧
+        self._scroll_to_card(len(self.cards) - 1)
+
+    def _scroll_to_card(self, index: int):
+        """滚动到指定卡片"""
+        if 0 <= index < len(self.cards):
+            self.scroll.ensureWidgetVisible(self.cards[index])
 
     def _on_card_clicked(self, index: int):
         """卡片点击选中"""
@@ -445,6 +512,7 @@ class StoryboardView(QWidget):
             card.clicked.connect(self._on_card_clicked)
             card.image_clicked.connect(self._on_image_clicked)
             card.duration_changed.connect(self._on_duration_changed)
+            card.regenerate_clicked.connect(self.frame_regenerate)
             self.container_layout.addWidget(card)
             self.cards.append(card)
 
@@ -458,3 +526,26 @@ class StoryboardView(QWidget):
         if 0 <= index < len(self.cards):
             self.frames[index]["image_path"] = image_path
             self.cards[index].update_image(image_path)
+
+    def update_frame_data(self, index: int, frame_data: dict):
+        """更新某帧的完整数据（重新生成后调用），重建该卡片"""
+        if not (0 <= index < len(self.frames)):
+            return
+        self.frames[index] = frame_data
+        # 保留选中状态
+        was_selected = (self.selected_index == index)
+        # 重建该卡片
+        old_card = self.cards[index]
+        # 在布局中替换
+        layout_index = self.container_layout.indexOf(old_card)
+        old_card.deleteLater()
+        new_card = FrameCard(frame_data, index, font_size=self.font_size)
+        new_card.clicked.connect(self._on_card_clicked)
+        new_card.image_clicked.connect(self._on_image_clicked)
+        new_card.duration_changed.connect(self._on_duration_changed)
+        new_card.regenerate_clicked.connect(self.frame_regenerate)
+        # 插入到原来位置
+        self.container_layout.insertWidget(layout_index, new_card)
+        self.cards[index] = new_card
+        if was_selected:
+            new_card.set_selected(True)

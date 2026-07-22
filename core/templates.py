@@ -256,3 +256,34 @@ def get_template_by_name(name: str) -> StyleTemplate:
         if t.name == name:
             return t
     return TEMPLATES[0]
+
+
+def save_templates(templates: List[StyleTemplate]):
+    """保存模板列表到 templates.json"""
+    global TEMPLATES
+    data = [asdict(t) for t in templates]
+    TEMPLATES_FILE.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+    # 更新全局变量
+    TEMPLATES = templates
+
+
+def add_template(template: StyleTemplate):
+    """新增模板并保存"""
+    # 检查 key 唯一
+    for t in TEMPLATES:
+        if t.key == template.key:
+            raise ValueError(f"模板 key '{template.key}' 已存在")
+    TEMPLATES.append(template)
+    save_templates(TEMPLATES)
+
+
+def remove_template(key: str):
+    """删除模板并保存（至少保留一个）"""
+    global TEMPLATES
+    if len(TEMPLATES) <= 1:
+        raise ValueError("至少需要保留一个模板")
+    TEMPLATES = [t for t in TEMPLATES if t.key != key]
+    save_templates(TEMPLATES)

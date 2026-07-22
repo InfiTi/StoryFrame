@@ -15,11 +15,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QThread, Signal, QObject, QSize
 from PySide6.QtGui import QFont, QPixmap
 
-from config import load_config, save_config, OUTPUT_DIR
+from config import load_config, save_config, OUTPUT_DIR, get_llm_config
 from core.templates import TEMPLATES, get_template_by_name
 from core.llm_client import LLMClient
-from core.image_client import ImageClient
-from core.storyboard import generate_storyboard, Storyboard, StoryboardFrame
+from core.generation_manager import GenerationManager
+from core.storyboard import generate_storyboard, generate_storyboard_v2, regenerate_frame, Storyboard, StoryboardFrame
 from core.product_parser import parse_product_markdown, scan_product_directory, ProductInfo, update_product_markdown
 from core.script_cache import save_cache, list_cache, load_cache, cleanup_cache
 from core.exporter import export_json, export_markdown, export_package
@@ -30,14 +30,16 @@ from ui.storyboard_view import StoryboardView
 # ========== Worker 线程 ==========
 
 class GenerateScriptWorker(QObject):
-    """生成分镜脚本的工作线程"""
+    """生成分镜脚本的工作线程（两步生成：基调+逐帧）"""
     finished = Signal(object)  # Storyboard
     error = Signal(str)
     chunk = Signal(str)  # 流式片段
+    stage = Signal(str)  # 阶段切换：'plan' / 'frame:N/total'
+    frame_done = Signal(int, object)  # 单帧完成：frame_num, StoryboardFrame
 
     def __init__(self, llm_config, product_name, product_desc,
                  selling_points, template, frame_count, total_duration,
-                 product_info=None, direction=""):
+                 product_info=None, direction="", use_v2=True):
         super().__init__()
         self.llm_config = llm_config
         self.product_name = product_name
@@ -48,6 +50,7 @@ class GenerateScriptWorker(QObject):
         self.total_duration = total_duration
         self.product_info = product_info
         self.direction = direction
+        self.use_v2 = use_v2
 
     def run(self):
         try:
@@ -60,18 +63,51 @@ class GenerateScriptWorker(QObject):
             def on_chunk(text):
                 self.chunk.emit(text)
 
-            sb = generate_storyboard(
-                llm=llm,
-                product_name=self.product_name,
-                product_desc=self.product_desc,
-                selling_points=self.selling_points,
-                template=self.template,
-                frame_count=self.frame_count,
-                total_duration=self.total_duration,
-                product_info=self.product_info,
-                direction=self.direction,
-                on_chunk=on_chunk,
-            )
+            if self.use_v2:
+                # 两步生成
+                self.stage.emit("plan")
+
+                def on_plan_chunk(text):
+                    self.chunk.emit(text)
+
+                def on_stage_local(stage):
+                    self.stage.emit(stage)
+
+                def on_frame_chunk_local(text):
+                    self.chunk.emit(text)
+
+                def on_frame_done(frame_num, frame):
+                    self.frame_done.emit(frame_num, frame)
+
+                sb = generate_storyboard_v2(
+                    llm=llm,
+                    product_name=self.product_name,
+                    product_desc=self.product_desc,
+                    selling_points=self.selling_points,
+                    template=self.template,
+                    frame_count=self.frame_count,
+                    total_duration=self.total_duration,
+                    product_info=self.product_info,
+                    direction=self.direction,
+                    on_plan_chunk=on_plan_chunk,
+                    on_frame_chunk=on_frame_chunk_local,
+                    on_frame_done=on_frame_done,
+                    on_stage=on_stage_local,
+                )
+            else:
+                # 旧流程（回退）
+                sb = generate_storyboard(
+                    llm=llm,
+                    product_name=self.product_name,
+                    product_desc=self.product_desc,
+                    selling_points=self.selling_points,
+                    template=self.template,
+                    frame_count=self.frame_count,
+                    total_duration=self.total_duration,
+                    product_info=self.product_info,
+                    direction=self.direction,
+                    on_chunk=on_chunk,
+                )
             llm.close()
             self.finished.emit(sb)
         except Exception as e:
@@ -96,25 +132,70 @@ class GenerateImageWorker(QObject):
 
     def run(self):
         try:
-            client = ImageClient(
-                provider=self.image_config["provider"],
-                base_url=self.image_config["base_url"],
-                api_key=self.image_config["api_key"],
-                model=self.image_config["model"],
-                size=self.image_config["size"],
-                quality=self.image_config["quality"],
-            )
-            ok, msg = client.generate(
-                self.prompt, self.output_path,
+            from core.generation_manager import GenerationManager
+            # 构建一个只含 image 配置的 dict
+            cfg = {"image": self.image_config}
+            mgr = GenerationManager(cfg)
+            ok, path_or_url, msg = mgr.generate_image(
+                prompt=self.prompt,
+                output_path=self.output_path,
                 reference_image=self.reference_image,
                 denoise=self.denoise,
                 reference_images=self.reference_images,
             )
-            client.close()
+            mgr.close()
             if ok:
                 self.finished.emit(self.frame_index, self.output_path)
             else:
                 self.error.emit(self.frame_index, msg)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.error.emit(self.frame_index, str(e))
+
+
+class RegenerateFrameWorker(QObject):
+    """重新生成单帧提示词的工作线程"""
+    finished = Signal(int, object)  # frame_index, StoryboardFrame
+    error = Signal(int, str)        # frame_index, error_msg
+    chunk = Signal(str)             # 流式片段
+
+    def __init__(self, llm_config, storyboard, frame_index, template,
+                 product_info, product_name, product_desc, selling_points):
+        super().__init__()
+        self.llm_config = llm_config
+        self.storyboard = storyboard
+        self.frame_index = frame_index
+        self.template = template
+        self.product_info = product_info
+        self.product_name = product_name
+        self.product_desc = product_desc
+        self.selling_points = selling_points
+
+    def run(self):
+        try:
+            llm = LLMClient(
+                base_url=self.llm_config["base_url"],
+                api_key=self.llm_config["api_key"],
+                model=self.llm_config["model"],
+            )
+
+            def on_chunk(text):
+                self.chunk.emit(text)
+
+            frame = regenerate_frame(
+                llm=llm,
+                storyboard=self.storyboard,
+                frame_index=self.frame_index,
+                template=self.template,
+                product_info=self.product_info,
+                product_name=self.product_name,
+                product_desc=self.product_desc,
+                selling_points=self.selling_points,
+                on_chunk=on_chunk,
+            )
+            llm.close()
+            self.finished.emit(self.frame_index, frame)
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -145,6 +226,9 @@ class MainWindow(QMainWindow):
         self._image_project_dir = None
         self._image_reference = None
         self._image_denoise = 0.6
+        # 单帧重生管理
+        self._regen_thread = None
+        self._regen_worker = None
 
         self._init_ui()
         self._apply_style()
@@ -176,6 +260,18 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.cache_load_btn)
 
         toolbar.addStretch()
+
+        # 模型快速切换
+        model_label = QLabel("🤖 模型：")
+        model_label.setStyleSheet("color: #565f89; font-size: 12px;")
+        toolbar.addWidget(model_label)
+        self.model_switch_combo = QComboBox()
+        self.model_switch_combo.setFixedWidth(150)
+        self._refresh_model_switch()
+        self.model_switch_combo.currentTextChanged.connect(self._on_model_switch)
+        toolbar.addWidget(self.model_switch_combo)
+
+        toolbar.addSpacing(12)
 
         # 核心操作按钮（右侧）
         self.generate_script_btn = QPushButton("🎬 生成分镜脚本")
@@ -305,23 +401,31 @@ class MainWindow(QMainWindow):
         product_group = QGroupBox("产品输入")
         product_form = QFormLayout(product_group)
 
-        # 商品列表
-        product_form.addRow(QLabel("选择商品："))
+        # 商品列表 + 刷新按钮放在垂直布局中，让列表自适应伸缩
+        from PySide6.QtWidgets import QVBoxLayout as QVL
+        list_container = QWidget()
+        list_layout = QVL(list_container)
+        list_layout.setContentsMargins(0, 0, 0, 0)
+        list_layout.setSpacing(4)
 
         self.product_list = QListWidget()
         self.product_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.product_list.setMinimumHeight(200)
-        self.product_list.setMaximumHeight(350)
         self.product_list.setTextElideMode(Qt.ElideRight)
         self.product_list.setWordWrap(False)
+        # 设置 size policy 让列表可伸缩
+        from PySide6.QtWidgets import QSizePolicy
+        self.product_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.product_list.itemClicked.connect(self._on_product_selected)
-        product_form.addRow(self.product_list)
+        list_layout.addWidget(self.product_list)
 
-        # 刷新按钮
+        # 刷新按钮紧跟列表下方
         self.refresh_product_btn = QPushButton("🔄 刷新商品列表")
         self.refresh_product_btn.setFixedHeight(32)
         self.refresh_product_btn.clicked.connect(self._load_product_list)
-        product_form.addRow(self.refresh_product_btn)
+        list_layout.addWidget(self.refresh_product_btn)
+
+        # 列表容器占主要空间
+        product_form.addRow(list_container)
 
         self.product_name_input = QLineEdit()
         self.product_name_input.setPlaceholderText("如：芒果干")
@@ -398,6 +502,7 @@ class MainWindow(QMainWindow):
         self.storyboard_view = StoryboardView()
         self.storyboard_view.frame_selected.connect(self._on_frame_selected)
         self.storyboard_view.frame_duration_changed.connect(self._on_frame_duration_changed)
+        self.storyboard_view.frame_regenerate.connect(self._on_frame_regenerate)
         right_layout.addWidget(self.storyboard_view, stretch=1)
 
         # 底部操作栏
@@ -433,6 +538,18 @@ class MainWindow(QMainWindow):
         self.doubao_video_btn.clicked.connect(lambda: self._show_doubao_menu("video"))
         bottom_bar.addWidget(self.doubao_video_btn)
 
+        # 视频生成按钮
+        self.agnes_video_btn = QPushButton("🎥 生成视频")
+        self.agnes_video_btn.setFixedHeight(30)
+        self.agnes_video_btn.setStyleSheet(
+            "QPushButton { background: #7aa2f7; color: #0f1117; font-size: 11px; font-weight: bold; border-radius: 6px; border: none; padding: 2px 12px; }"
+            "QPushButton:hover { background: #89b4fa; }"
+            "QPushButton:disabled { background: #1f2233; color: #3b4056; }"
+        )
+        self.agnes_video_btn.setEnabled(False)
+        self.agnes_video_btn.clicked.connect(self._agnes_generate_video)
+        bottom_bar.addWidget(self.agnes_video_btn)
+
         right_layout.addLayout(bottom_bar)
 
         # 组装（左侧面板直接放入，不滚动）
@@ -441,6 +558,27 @@ class MainWindow(QMainWindow):
 
         # 初始化风格描述
         self._on_style_changed(0)
+
+    def _refresh_model_switch(self):
+        """刷新模型快速切换下拉框"""
+        self.model_switch_combo.blockSignals(True)
+        self.model_switch_combo.clear()
+        providers = self.config.get("llm", {}).get("providers", {})
+        for name in providers:
+            self.model_switch_combo.addItem(name)
+        current = self.config.get("llm", {}).get("current", "default")
+        if current in providers:
+            self.model_switch_combo.setCurrentText(current)
+        self.model_switch_combo.blockSignals(False)
+
+    def _on_model_switch(self, name: str):
+        """快速切换模型"""
+        if not name:
+            return
+        self.config["llm"]["current"] = name
+        from config import save_config
+        save_config(self.config)
+        self.statusBar().showMessage(f"已切换模型: {name}", 3000)
 
     def _apply_style(self):
         """应用全局样式 - Tokyo Night 深蓝主题"""
@@ -705,7 +843,21 @@ class MainWindow(QMainWindow):
             self.status_label.setText("设置已保存")
             # 刷新分镜视图字体大小
             self.storyboard_view.reload_font_size()
+            # 刷新模型切换器
+            self._refresh_model_switch()
+            # 刷新风格模板下拉框
+            self._refresh_style_combo()
         self._load_product_list()
+
+    def _refresh_style_combo(self):
+        """刷新风格模板下拉框"""
+        from core.templates import TEMPLATES
+        self.style_combo.blockSignals(True)
+        self.style_combo.clear()
+        for t in TEMPLATES:
+            self.style_combo.addItem(f"{t.name} - {t.description}", t.key)
+        self.style_combo.blockSignals(False)
+        self._on_style_changed(0)
 
 
     def _generate_script(self):
@@ -735,11 +887,17 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 0)  # 不确定进度
         self.status_label.setText("正在生成分镜脚本...")
         self._chunk_count = 0
+        self._frames_received = 0
 
-        # 启动工作线程
+        # 清空旧帧
+        self.current_frames_data = []
+        self.current_storyboard = None
+        self.storyboard_view.set_frames([])
+
+        # 启动工作线程（两步生成模式）
         self.script_thread = QThread()
         self.script_worker = GenerateScriptWorker(
-            llm_config=self.config["llm"],
+            llm_config=get_llm_config(self.config),
             product_name=product_name,
             product_desc=product_desc,
             selling_points=selling_points or "美味零食",
@@ -748,24 +906,54 @@ class MainWindow(QMainWindow):
             total_duration=total_duration,
             product_info=self.product_info,
             direction=self.direction_input.text().strip(),
+            use_v2=True,
         )
         self.script_worker.moveToThread(self.script_thread)
         self.script_thread.started.connect(self.script_worker.run)
         self.script_worker.finished.connect(self._on_script_finished)
         self.script_worker.error.connect(self._on_script_error)
         self.script_worker.chunk.connect(self._on_script_chunk)
+        self.script_worker.stage.connect(self._on_script_stage)
+        self.script_worker.frame_done.connect(self._on_script_frame_done)
         self.script_worker.finished.connect(self.script_thread.quit)
         self.script_worker.error.connect(self.script_thread.quit)
         self.script_thread.start()
 
     def _on_script_chunk(self, text: str):
         """流式输出进度"""
-        cursor = self.status_label.text()
-        # 简单显示收到字符数
         if not hasattr(self, '_chunk_count'):
             self._chunk_count = 0
         self._chunk_count += len(text)
         self.status_label.setText(f"正在生成分镜脚本... 已接收 {self._chunk_count} 字符")
+
+    def _on_script_stage(self, stage: str):
+        """生成阶段切换"""
+        self._chunk_count = 0
+        if stage == "plan":
+            self.status_label.setText("第 1 步：生成分镜基调方案...")
+            self.progress_bar.setRange(0, 0)  # 不确定进度
+        elif stage.startswith("frame:"):
+            # frame:N/total
+            parts = stage.split(":")[1].split("/")
+            current = int(parts[0])
+            total = int(parts[1])
+            self.progress_bar.setRange(0, total)
+            self.progress_bar.setValue(current - 1)
+            self.status_label.setText(f"第 2 步：逐帧精生成（{current}/{total}）...")
+
+    def _on_script_frame_done(self, frame_num: int, frame):
+        """单帧生成完成 — 实时显示"""
+        # 把 StoryboardFrame 转成 dict 追加到视图
+        frame_dict = frame.__dict__
+        self.current_frames_data.append(frame_dict)
+        self.storyboard_view.add_frame(frame_dict)
+
+        # 更新进度
+        if self.script_worker:
+            total = self.script_worker.frame_count
+            self.progress_bar.setRange(0, total)
+            self.progress_bar.setValue(frame_num)
+        self.status_label.setText(f"第 2 步：逐帧精生成（{frame_num}/{self.script_worker.frame_count} 完成）...")
 
     def _on_total_duration_changed(self, total_duration: int):
         """总时长改变后，按比例缩放各帧时长（保持现有节奏）"""
@@ -806,10 +994,81 @@ class MainWindow(QMainWindow):
         self.duration_spin.setValue(int(round(new_total)))
         self.duration_spin.blockSignals(False)
 
+    def _on_frame_regenerate(self, index: int):
+        """重新生成某帧的提示词"""
+        if not self.current_storyboard or not (0 <= index < len(self.current_storyboard.frames)):
+            return
+        if self._regen_thread is not None:
+            self.status_label.setText("正在重新生成中，请稍候...")
+            return
+
+        template = get_template_by_name(TEMPLATES[self.style_combo.currentIndex()].name)
+        product_name = self.product_name_input.text().strip()
+        product_desc = self.product_desc_input.toPlainText().strip()
+        selling_points = self.selling_points_input.toPlainText().strip()
+
+        self.status_label.setText(f"正在重新生成第 {index + 1} 帧提示词...")
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 0)  # 不确定进度
+
+        self._regen_thread = QThread()
+        self._regen_worker = RegenerateFrameWorker(
+            llm_config=get_llm_config(self.config),
+            storyboard=self.current_storyboard,
+            frame_index=index,
+            template=template,
+            product_info=self.product_info,
+            product_name=product_name,
+            product_desc=product_desc,
+            selling_points=selling_points,
+        )
+        self._regen_worker.moveToThread(self._regen_thread)
+        self._regen_thread.started.connect(self._regen_worker.run)
+        self._regen_worker.finished.connect(self._on_regen_finished)
+        self._regen_worker.error.connect(self._on_regen_error)
+        self._regen_worker.finished.connect(self._regen_thread.quit)
+        self._regen_worker.error.connect(self._regen_thread.quit)
+        self._regen_thread.start()
+
+    def _on_regen_finished(self, frame_index: int, frame: StoryboardFrame):
+        """单帧重生完成"""
+        # 更新 storyboard 对象
+        if self.current_storyboard and 0 <= frame_index < len(self.current_storyboard.frames):
+            old_frame = self.current_storyboard.frames[frame_index]
+            frame.image_path = old_frame.image_path  # 保留已生成的图片路径
+            self.current_storyboard.frames[frame_index] = frame
+        # 更新 frames_data
+        if 0 <= frame_index < len(self.current_frames_data):
+            old_data = self.current_frames_data[frame_index]
+            frame_dict = frame.__dict__
+            frame_dict["image_path"] = old_data.get("image_path")  # 保留图片
+            self.current_frames_data[frame_index] = frame_dict
+            # 更新视图（重建卡片）
+            self.storyboard_view.update_frame_data(frame_index, frame_dict)
+
+        self.progress_bar.setVisible(False)
+        self.status_label.setText(f"第 {frame_index + 1} 帧提示词已重新生成")
+
+        # 清理线程引用
+        self._regen_thread = None
+        self._regen_worker = None
+
+    def _on_regen_error(self, frame_index: int, error: str):
+        """单帧重生失败"""
+        self.progress_bar.setVisible(False)
+        self.status_label.setText(f"第 {frame_index + 1} 帧重生失败")
+        QMessageBox.critical(self, "错误", f"重新生成第 {frame_index + 1} 帧失败：\n\n{error}")
+        self._regen_thread = None
+        self._regen_worker = None
+
     def _on_script_finished(self, storyboard: Storyboard):
-        """分镜脚本生成完成"""
+        """分镜脚本全部生成完成（收尾）"""
         self.current_storyboard = storyboard
-        self.current_frames_data = [f.__dict__ for f in storyboard.frames]
+        # current_frames_data 已在 _on_script_frame_done 中逐帧追加
+        # 只需确保数据同步
+        if not self.current_frames_data:
+            self.current_frames_data = [f.__dict__ for f in storyboard.frames]
+            self.storyboard_view.set_frames(self.current_frames_data)
 
         # 保存到缓存
         product_name = storyboard.product_name
@@ -829,6 +1088,7 @@ class MainWindow(QMainWindow):
         self.export_pkg_btn.setEnabled(True)
         self.doubao_img_btn.setEnabled(True)
         self.doubao_video_btn.setEnabled(True)
+        self.agnes_video_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.status_label.setText(f"已生成 {len(storyboard.frames)} 帧分镜脚本（已缓存）")
 
@@ -874,6 +1134,8 @@ class MainWindow(QMainWindow):
                 camera_motion_cn=item.get("camera_motion_cn", ""),
                 motion_hint=item.get("motion_hint", ""),
                 motion_hint_cn=item.get("motion_hint_cn", ""),
+                video_prompt=item.get("video_prompt", ""),
+                video_prompt_cn=item.get("video_prompt_cn", ""),
                 description=item.get("description", ""),
                 image_path=item.get("image_path"),
             ))
@@ -895,6 +1157,7 @@ class MainWindow(QMainWindow):
         self.export_pkg_btn.setEnabled(True)
         self.doubao_img_btn.setEnabled(True)
         self.doubao_video_btn.setEnabled(True)
+        self.agnes_video_btn.setEnabled(True)
         self.status_label.setText(f"已加载缓存版本：{len(frames)} 帧")
 
     def _on_frame_selected(self, index: int):
@@ -930,36 +1193,14 @@ class MainWindow(QMainWindow):
 
         from core.prompt_loader import get_doubao_image_prompt, get_doubao_video_prompt
         if kind == "image":
-            text = get_doubao_image_prompt(category, frames, frame_count, negative_words=template.negative_words)
+            text = get_doubao_image_prompt(category, frames, frame_count, negative_words=template.negative_words, lang=lang)
             label = "图片"
         else:
             bgm_style = self.bgm_combo.currentText()
-            text = get_doubao_video_prompt(category, frames, frame_count, bgm_style, negative_words=template.negative_words)
+            text = get_doubao_video_prompt(category, frames, frame_count, bgm_style, negative_words=template.negative_words, lang=lang)
             label = "视频"
         if not text:
             return
-
-        # 如果选英文，逐帧替换为英文字段
-        if lang == "en":
-            import re
-            for f in frames:
-                cn_img = f.get("image_prompt_cn", "")
-                en_img = f.get("image_prompt", "")
-                cn_cam = f.get("camera_motion_cn", "")
-                en_cam = f.get("camera_motion", "")
-                cn_hint = f.get("motion_hint_cn", "")
-                en_hint = f.get("motion_hint", "")
-                if cn_img and en_img:
-                    cn_clean = re.sub(r"\s*[，,]?\s*主体居中.*?(安全区|留白).*?$", "", cn_img, flags=re.IGNORECASE).strip()
-                    cn_clean = re.sub(r"\s*[，,]?\s*(无文字|无水印|no text|no words|no letters|no logo|no watermark|no label|no hands|no people).*?$", "", cn_clean, flags=re.IGNORECASE).strip()
-                    en_clean = re.sub(r"\s*no text.*?$", "", en_img, flags=re.IGNORECASE).strip()
-                    en_clean = re.sub(r"\s*Centered.*?(safe zone|whitespace).*?$", "", en_clean, flags=re.IGNORECASE).strip()
-                    if cn_clean and en_clean:
-                        text = text.replace(f"画面描述：{cn_clean}", f"画面描述：{en_clean}")
-                if cn_cam and en_cam:
-                    text = text.replace(f"镜头运动：{cn_cam}", f"镜头运动：{en_cam}")
-                if cn_hint and en_hint:
-                    text = text.replace(f"画面动态：{cn_hint}", f"画面动态：{en_hint}")
 
         QApplication.clipboard().setText(text)
         lang_label = "中文" if lang == "cn" else "英文"
@@ -1237,3 +1478,197 @@ class MainWindow(QMainWindow):
             result = export_package(self.current_storyboard, path)
             self.status_label.setText(f"已导出到 {result}")
             QMessageBox.information(self, "导出完成", f"已导出到：\n{result}")
+
+    # ========== 视频生成 ==========
+
+    def _agnes_generate_video(self):
+        """生成视频
+
+        图生视频模式：用统一接口生成图片 → 拿到公网 URL → 传给视频生成
+        文生视频模式：直接调用视频 API
+        文生视频模式：直接调用视频 API
+        """
+        if not self.current_frames_data:
+            QMessageBox.warning(self, "提示", "请先生成分镜脚本")
+            return
+
+        video_config = self.config.get("video", {})
+        api_key = video_config.get("api_key", "")
+        if not api_key:
+            QMessageBox.warning(self, "未配置", "请先在设置中填入视频 API Key")
+            return
+
+        # 选择生成模式
+        from PySide6.QtWidgets import QInputDialog
+        modes = ["图生视频（生成图片→视频）", "文生视频（纯文本→视频）"]
+        choice, ok = QInputDialog.getItem(
+            self, "生成模式", "选择视频生成模式：", modes, 0, False
+        )
+        if not ok:
+            return
+
+        is_image_to_video = (choice == modes[0])
+
+        # 选择帧
+        frame_items = []
+        for f in self.current_frames_data:
+            frame_num = f.get("frame", 0)
+            desc = f.get("description", "")
+            frame_items.append(f"第{frame_num}帧 {desc[:30]}")
+
+        if len(frame_items) == 1:
+            selected_idx = 0
+        else:
+            selected, ok = QInputDialog.getItem(
+                self, "选择帧", "选择要生成视频的帧：", frame_items, 0, False
+            )
+            if not ok:
+                return
+            selected_idx = frame_items.index(selected)
+
+        frame_data = self.current_frames_data[selected_idx]
+        frame_num = frame_data.get("frame", selected_idx + 1)
+
+        # 构建视频提示词
+        video_prompt = frame_data.get("video_prompt", "") or frame_data.get("video_prompt_cn", "")
+        if not video_prompt:
+            motion = frame_data.get("motion_hint", "")
+            camera = frame_data.get("camera_motion", "")
+            desc = frame_data.get("description", "")
+            video_prompt = f"{desc}. Camera: {camera}. Motion: {motion}."
+
+        if not video_prompt:
+            QMessageBox.warning(self, "无提示词", "该帧没有视频提示词，无法生成")
+            return
+
+        # 图片提示词（图生视频模式用）
+        image_prompt = frame_data.get("image_prompt", "") or frame_data.get("image_prompt_cn", "")
+
+        # 输出路径
+        product_name = self.current_storyboard.product_name if self.current_storyboard else "output"
+        output_dir = os.path.join("outputs", product_name, "videos")
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, f"frame_{frame_num}.mp4")
+
+        # 确认
+        from PySide6.QtWidgets import QMessageBox as QMB
+        prompt_preview = video_prompt[:200] + ("..." if len(video_prompt) > 200 else "")
+        mode_label = "图生视频" if is_image_to_video else "文生视频"
+        msg = f"即将生成视频：\n\n模式：{mode_label}\n帧：第{frame_num}帧\n提示词：{prompt_preview}"
+        if is_image_to_video:
+            msg += f"\n图片提示词：{image_prompt[:100]}..." if len(image_prompt) > 100 else f"\n图片提示词：{image_prompt}"
+        msg += f"\n输出：{output_path}\n\n确认生成？"
+        reply = QMB.question(self, "确认生成", msg, QMB.Yes | QMB.No)
+        if reply != QMB.Yes:
+            return
+
+        # 启动后台生成
+        self.agnes_video_btn.setEnabled(False)
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.status_label.setText(f"正在生成第{frame_num}帧视频...")
+
+        from PySide6.QtCore import QThread, Signal
+
+        class VideoWorker(QThread):
+            progress = Signal(int, str)
+            finished_signal = Signal(bool, str)
+
+            def __init__(self, mgr, prompt, image_prompt,
+                         output_path, is_image_to_video, video_config):
+                super().__init__()
+                self.mgr = mgr
+                self.prompt = prompt
+                self.image_prompt = image_prompt
+                self.output_path = output_path
+                self.is_image_to_video = is_image_to_video
+                self.video_config = video_config
+
+            def run(self):
+                try:
+                    image_url = None
+
+                    # 图生视频：先用统一接口生成图片拿公网 URL
+                    if self.is_image_to_video:
+                        if not self.image_prompt:
+                            self.finished_signal.emit(False, "图生视频需要图片提示词")
+                            return
+
+                        self.progress.emit(0, "正在生成图片...")
+
+                        w = self.video_config.get("width", 1024)
+                        h = self.video_config.get("height", 1024)
+                        img_size = f"{w}x{h}"
+
+                        ok, img_url, img_msg = self.mgr.generate_image_url(
+                            prompt=self.image_prompt,
+                            size=img_size,
+                        )
+                        if not ok:
+                            self.finished_signal.emit(False, f"图片生成失败: {img_msg}")
+                            return
+
+                        image_url = img_url
+                        self.progress.emit(5, "图片生成完成，开始生成视频...")
+
+                    # 生成视频
+                    ok, msg = self.mgr.generate_video(
+                        prompt=self.prompt,
+                        output_path=self.output_path,
+                        image_url=image_url,
+                        on_progress=lambda p, s: self.progress.emit(p, s),
+                    )
+                    self.finished_signal.emit(ok, msg)
+                except Exception as e:
+                    self.finished_signal.emit(False, str(e))
+
+        from core.generation_manager import GenerationManager
+
+        mgr = GenerationManager(self.config)
+
+        worker = VideoWorker(
+            mgr=mgr,
+            prompt=video_prompt,
+            image_prompt=image_prompt,
+            output_path=output_path,
+            is_image_to_video=is_image_to_video,
+            video_config=video_config,
+        )
+        self._video_worker = worker
+        self._video_mgr = mgr
+
+        worker.progress.connect(lambda p, s: (
+            self.progress_bar.setValue(p),
+            self.status_label.setText(f"生成中... {p}% ({s})"),
+        ))
+        worker.finished_signal.connect(lambda ok, msg: self._on_agnes_video_done(ok, msg, frame_num, output_path))
+        worker.start()
+
+    def _on_agnes_video_done(self, ok: bool, msg: str, frame_num: int, output_path: str):
+        """视频生成完成"""
+        self.agnes_video_btn.setEnabled(True)
+        self.progress_bar.setVisible(False)
+        self._video_mgr.close()
+        del self._video_worker
+        del self._video_mgr
+
+        if ok:
+            self.status_label.setText(f"第{frame_num}帧视频已生成：{output_path}")
+            from PySide6.QtWidgets import QMessageBox as QMB
+            reply = QMB.question(
+                self, "生成成功",
+                f"视频已生成：\n{output_path}\n\n是否打开所在文件夹？",
+                QMB.Yes | QMB.No
+            )
+            if reply == QMB.Yes:
+                import subprocess, platform
+                folder = os.path.dirname(output_path)
+                if platform.system() == "Windows":
+                    subprocess.Popen(["explorer", "/select,", output_path])
+                else:
+                    subprocess.Popen(["xdg-open", folder])
+        else:
+            self.status_label.setText("视频生成失败")
+            from PySide6.QtWidgets import QMessageBox as QMB
+            QMB.critical(self, "生成失败", f"视频生成失败：\n\n{msg}")
