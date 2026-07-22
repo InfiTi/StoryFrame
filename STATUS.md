@@ -1,14 +1,13 @@
 # StoryFrame 项目状态
 
-> 最后更新: 2026-07-20 | 版本 v0.8.0
+> 最后更新: 2026-07-23 | 版本 v0.9.0
 
 ## 概述
 分镜图生成器 — 商品信息 → 分镜脚本 → 图片/视频提示词，PySide6 桌面应用。统一生成接口支持多 provider 切换。
 
 ## 当前状态
-- **版本**: v0.8.0
-- **阶段**: 统一生成接口
-- **当前主线**: 统一图片/视频生成 provider 体系
+- **版本**: v0.9.0
+- **阶段**: 动作相位系统
 
 ## 已完成
 - [x] 分镜脚本生成（LLM + JSON 流式解析）
@@ -38,8 +37,10 @@
 - [x] 单帧重新生成（每帧卡片有 🔄 按钮，不满意可单独重生该帧提示词，保留已生成图片）
 - [x] 风格模板管理（设置对话框新增「🎨 风格模板」Tab，可增/删/复制/编辑模板，保存到 templates.json）
 
+- [x] **动作相位系统（motion_phase）**: pre-action/mid-action/post-action/static 四阶段，解决图片与视频提示词不一致问题
+
 ## 进行中
-- [ ] 两步生成 UI 进度展示优化（基调→逐帧进度条）
+- [ ] 动作相位效果验证（需要实际生成分镜+视频测试）
 
 ## 待办
 - [ ] 口味标签/负向词的端到端验证
@@ -82,7 +83,7 @@
 | prompts/*.md | 提示词模板 |
 
 ## 最近变更
-- **07-22**: 风格模板管理：templates.py 新增 save_templates/add_template/remove_template 函数，templates.json 持久化；设置对话框新增「🎨 风格模板」Tab（列表选择 + 编辑表单 + 新增/复制/删除/保存）；主窗口设置关闭后刷新风格下拉框
+- **07-23**: 动作相位系统（motion_phase）：StoryboardFrame 新增 motion_phase 字段（pre-action/mid-action/post-action/static）；core.md 新增相位规则+图片/视频一致性约束；doubao_video_prompt.md 重写视频模板加入相位感知；frame_prompt.md 加入相位字段定义；prompt_loader.py 拼装逻辑注入相位信息。回退点 tag: pre-motion-phase
 - **07-22**: 单帧重新生成功能：storyboard.py 新增 regenerate_frame() 函数复用 generate_frame_detail 逻辑（temperature=0.9），FrameCard 卡片加 🔄 按钮，StoryboardView 新增 frame_regenerate 信号 + update_frame_data 方法，MainWindow 新增 RegenerateFrameWorker + _on_frame_regenerate/_on_regen_finished/_on_regen_error 处理链
 - **07-20**: 修复豆包图片复制英文提示词实际复制中文的 bug：`get_doubao_image_prompt`/`get_doubao_video_prompt` 新增 `lang` 参数直接选字段，去掉 `_copy_doubao_prompt` 中不可靠的后替换逻辑
 - **07-20**: 修复 Agnes 图片生成 400 错误：去掉 `response_format` 参数（Agnes 不支持），改为检查 `b64_json`/`url` 值非空判断返回格式，超时从 120s 提升到 300s
