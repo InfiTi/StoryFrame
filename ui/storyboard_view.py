@@ -536,9 +536,12 @@ class StoryboardView(QWidget):
         was_selected = (self.selected_index == index)
         # 重建该卡片
         old_card = self.cards[index]
-        # 在布局中替换
+        # 先从布局中移除旧卡片，再 deleteLater
         layout_index = self.container_layout.indexOf(old_card)
+        self.container_layout.removeWidget(old_card)
+        old_card.setParent(None)
         old_card.deleteLater()
+        # 创建新卡片
         new_card = FrameCard(frame_data, index, font_size=self.font_size)
         new_card.clicked.connect(self._on_card_clicked)
         new_card.image_clicked.connect(self._on_image_clicked)

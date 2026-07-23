@@ -1024,10 +1024,14 @@ class MainWindow(QMainWindow):
         )
         self._regen_worker.moveToThread(self._regen_thread)
         self._regen_thread.started.connect(self._regen_worker.run)
-        self._regen_worker.finished.connect(self._on_regen_finished)
-        self._regen_worker.error.connect(self._on_regen_error)
+        # 先连接 thread.quit，再连接 finished/error 处理
+        # 这样 thread 先收到 quit 信号，再执行 finished 处理
         self._regen_worker.finished.connect(self._regen_thread.quit)
         self._regen_worker.error.connect(self._regen_thread.quit)
+        self._regen_worker.finished.connect(self._on_regen_finished)
+        self._regen_worker.error.connect(self._on_regen_error)
+        # 线程结束后清理引用
+        self._regen_thread.finished.connect(self._on_regen_thread_finished)
         self._regen_thread.start()
 
     def _on_regen_finished(self, frame_index: int, frame: StoryboardFrame):
@@ -1040,7 +1044,7 @@ class MainWindow(QMainWindow):
         # 更新 frames_data
         if 0 <= frame_index < len(self.current_frames_data):
             old_data = self.current_frames_data[frame_index]
-            frame_dict = frame.__dict__
+            frame_dict = dict(frame.__dict__)  # 使用副本，避免后续修改影响 frame 对象
             frame_dict["image_path"] = old_data.get("image_path")  # 保留图片
             self.current_frames_data[frame_index] = frame_dict
             # 更新视图（重建卡片）
@@ -1049,15 +1053,14 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         self.status_label.setText(f"第 {frame_index + 1} 帧提示词已重新生成")
 
-        # 清理线程引用
-        self._regen_thread = None
-        self._regen_worker = None
-
     def _on_regen_error(self, frame_index: int, error: str):
         """单帧重生失败"""
         self.progress_bar.setVisible(False)
         self.status_label.setText(f"第 {frame_index + 1} 帧重生失败")
         QMessageBox.critical(self, "错误", f"重新生成第 {frame_index + 1} 帧失败：\n\n{error}")
+
+    def _on_regen_thread_finished(self):
+        """重新生成线程完全结束后清理引用"""
         self._regen_thread = None
         self._regen_worker = None
 
