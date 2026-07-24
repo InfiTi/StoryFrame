@@ -17,7 +17,16 @@
 - 画面描述：{frame_description}
 - 卖点焦点：{frame_focus}
 - 运镜类型：{frame_camera_type}
-- 过渡方式：{frame_transition}
+- **过渡方式（从上一帧到本帧）：{frame_transition}**
+
+### ⚠️ 过渡方式强制约束
+- 你必须在本帧输出的 `transition` 字段中写入 `{frame_transition}`，不得改为 `none`
+- 如果过渡方式不是 `none` 或 `hard cut`，你的 image_prompt 和 video_prompt 必须包含过渡接口描述：
+  - **whip pan**：本帧 image_prompt 中产品应从甩镜方向的对侧进入画面（如向左甩镜则产品从右侧滑入），video_prompt 初始状态须写 "arriving from whip pan"
+  - **speed ramp**：本帧 camera_motion 须从 hold/静止开始加速（"from hold, accelerate to..."）
+  - **fade**：本帧 image_prompt 须写 "emerging from soft light bloom" 或类似的渐显描述
+  - **morph**：本帧 motion_phase 须为 mid-action，承接上一帧的形变状态
+- 第1帧的 transition 固定为 `none`
 
 ## 质感信息
 {texture_info}
@@ -59,7 +68,8 @@
 
 9. **video_prompt_cn**（中文）：video_prompt 的中文翻译
 
-10. **description**（中文，15-25字）：本帧镜头功能简述
+10. **transition**（英文）：从上一帧到本帧的过渡方式，必须填入 `{frame_transition}`，不得修改
+11. **description**（中文，15-25字）：本帧镜头功能简述
 
 ## 上下文衔接
 - 上一帧结尾状态：{prev_frame_ending}
@@ -79,5 +89,6 @@
   "motion_hint_cn": "...",
   "video_prompt": "...",
   "video_prompt_cn": "...",
+  "transition": "{frame_transition}",
   "description": "..."
 }}

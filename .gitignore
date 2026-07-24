@@ -31,3 +31,14 @@ Thumbs.db
 
 # 日志
 *.log
+
+# temp test scripts
+check_transitions.py
+test_*.py
+test_v2_integration.py
+test_scoring_latest.py
+test_transition_fix.py
+test_frame_prompt.py
+test_integration.py
+test_scoring.py
+

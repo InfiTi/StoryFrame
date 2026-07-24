@@ -150,11 +150,62 @@ def _detect_texture_module(product_texture: str = "") -> Optional[str]:
     return None
 
 
-def get_system_prompt(product_texture: str = "") -> str:
+def _build_camera_templates_prompt() -> str:
+    """构建镜头模板注入文本，供 system_prompt 使用"""
+    try:
+        import yaml
+    except ImportError:
+        return ""
+    
+    templates_file = Path(__file__).parent.parent / "camera_templates" / "camera_templates.yaml"
+    if not templates_file.exists():
+        return ""
+    
+    data = yaml.safe_load(templates_file.read_text(encoding="utf-8"))
+    if not data:
+        return ""
+    
+    lines = ["## 镜头模板库（生成画面描述时必须参照）", ""]
+    
+    for tpl in data:
+        lines.append(f"### 模板：{tpl['name']}（ID: {tpl['id']}）")
+        lines.append(f"适用场景：{tpl.get('applicable_scene', tpl.get('适用场景', ''))}")
+        lines.append("")
+        
+        dims = tpl.get("dimensions", {})
+        lines.append("镜头维度：")
+        for k, v in dims.items():
+            lines.append(f"  - {k}: {v}")
+        lines.append("")
+        
+        # 模板框架（让 LLM 参照结构）
+        lines.append("image_prompt 框架（参照此结构，填入产品变量）：")
+        lines.append(f"  {tpl.get('image_prompt_template', '').strip()}")
+        lines.append("")
+        lines.append("motion_hint 框架：")
+        lines.append(f"  {tpl.get('motion_hint_template', '').strip()}")
+        lines.append("")
+        lines.append("camera_motion 框架：")
+        lines.append(f"  {tpl.get('camera_motion_template', '').strip()}")
+        lines.append("")
+        lines.append("video_prompt 框架：")
+        lines.append(f"  {tpl.get('video_prompt_template', '').strip()}")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+    
+    return "\n".join(lines)
+
+
+def get_system_prompt(product_texture: str = "", include_camera_templates: bool = True) -> str:
     """获取 LLM 系统提示词（模块化组装）
     
-    组装顺序：core.md + texture_*.md (按质感选一) + camera_motion.md
+    组装顺序：core.md + texture_*.md (按质感选一) + camera_motion.md + camera_templates (可选)
     如果 modules/ 目录不存在，回退到旧的单文件 system_prompt.md
+    
+    Args:
+        product_texture: 质感描述，用于选择质感模块
+        include_camera_templates: 是否注入镜头模板选择规则
     """
     # 尝试模块化组装
     if MODULES_DIR.exists():
@@ -178,6 +229,12 @@ def get_system_prompt(product_texture: str = "") -> str:
         camera_content = _load_template_from(MODULES_DIR, "camera_motion.md")
         if camera_content:
             parts.append(camera_content.strip())
+        
+        # 4. 镜头模板层（可选，注入模板选择规则）
+        if include_camera_templates:
+            templates_text = _build_camera_templates_prompt()
+            if templates_text:
+                parts.append(templates_text)
         
         return "\n\n".join(parts)
     

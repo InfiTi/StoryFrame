@@ -21,8 +21,61 @@
 - 中间帧：快切节奏，每帧聚焦一个质感卖点，镜头运动干脆不拖沓
 - 最后一帧：产品完整定格陈列，画面稳定清晰，留下记忆点
 - 整体节奏前紧后松，开场爆点，结尾收稳
-- 帧间过渡必须明确：hard cut（硬切）/ whip pan（甩镜转场）/ speed ramp（变速过渡）/ fade（渐变）四选一
+- 帧间过渡必须明确：hard cut（硬切）/ whip pan（甩镜转场）/ speed ramp（变速过渡）/ fade（渐变）/ morph（形变过渡）五选一
+- **禁止连续两帧使用 hard cut**（除非总帧数 ≤ 2）
 - 过渡节奏与帧时长配合：短帧（≤1.5s）用 hard cut 或 whip pan，长帧（>1.5s）用 speed ramp 或 fade
+
+## ⚠️ 镜头模板使用规则（必须遵守）
+
+你必须从以下镜头模板中选择并参照生成每一帧的画面描述。不要自由创作运镜方式和画面描述框架，而是选择最匹配当前帧功能的模板，填入产品相关变量。
+
+### 可用镜头模板
+
+| 模板 ID | 名称 | 适用帧位 | 核心特征 |
+|---------|------|---------|----------|
+| fast_push_shatter | 快速推近碎裂 | 第1帧/爆点帧 | fast push-in + hard stop，产品碎裂/崩解瞬间 |
+| whip_pan_reveal | 甩镜定格揭示 | 中间帧/转场帧 | whip pan + freeze，产品滑入画面 |
+| snap_zoom_reveal | 急速拉远全貌 | 揭示帧/倒数第2帧 | snap zoom out + hold，从细节拉远全貌 |
+
+### 模板选择规则
+1. 第1帧（爆点开场）：必须选 `fast_push_shatter`
+2. 中间帧：优先选 `whip_pan_reveal` 或 `snap_zoom_reveal`，交替使用
+3. 最后一帧（记忆定格）：可选 `snap_zoom_reveal`（拉远展示全貌）或 `static hold`
+4. 相邻帧不得使用相同模板
+5. 使用模板时，必须参照模板的维度定义（景别/运镜/速度/角度/光线/色调/主体动作/背景）生成画面描述
+6. image_prompt / motion_hint / camera_motion / video_prompt 的内容必须与所选模板的框架一致
+
+## ⚠️ 帧间过渡动作指导（必须遵守）
+
+过渡不是只写一个 transition 字段就完了，**前后帧的画面状态必须有衔接接口**：
+
+### whip pan（甩镜转场）
+- **前帧结尾**：产品在画面中偏向甩镜方向的一侧（如向右甩，产品偏右）
+- **后帧开头**：产品从甩镜方向的对侧滑入（如右甩后，产品从左侧滑入画面）
+- **画面描述接口**：前帧 image_prompt 末尾写 "product positioned at right third"，后帧 image_prompt 开头写 "product arriving from left edge"
+- **video_prompt 接口**：前帧 video_prompt 结束状态写 "camera whips right"，后帧 video_prompt 初始状态写 "camera arriving from left whip"
+
+### speed ramp（变速过渡）
+- **前帧结尾**：镜头运动减速（如 push-in 减速到 hold）
+- **后帧开头**：镜头从静止开始加速（如 pull back 从 hold 开始加速）
+- **画面描述接口**：前帧 camera_motion 结尾写 "decelerate to hold"，后帧 camera_motion 开头写 "from hold, accelerate to..."
+- **节奏配合**：前帧速度曲线用 decelerate，后帧用 ease-in
+
+### fade（渐变过渡）
+- **前帧结尾**：画面光线开始变暗/变亮，或产品开始被光晕笼罩
+- **后帧开头**：画面从暗/亮渐显，产品从光晕中浮现
+- **画面描述接口**：前帧 image_prompt 末尾写 "subtle light bloom beginning"，后帧 image_prompt 开头写 "emerging from soft light bloom"
+- **适用场景**：风味切换、氛围转换
+
+### morph（形变过渡）— 新增
+- **前帧结尾**：产品开始发生形变（如饼干开始碎裂、夹心开始流出）
+- **后帧开头**：产品从形变状态继续（如碎片继续飞散、夹心继续流淌）
+- **画面描述接口**：前帧 motion_phase 用 mid-action，后帧 motion_phase 也用 mid-action，但动作阶段不同（前帧 40%，后帧 60%）
+- **适用场景**：同一产品的不同卖点切换，产品本身做转场
+
+### hard cut（硬切）
+- **限制使用**：连续两帧不得都用 hard cut
+- **适用场景**：节奏极快（≤1.0s）的帧，或产品完全不同时的强制切换
 
 ## ⚠️ 帧时长（duration）强制规则
 - **duration 必须严格使用用户提示词中「帧时长分配」给出的具体数值，不得自行计算或取整**

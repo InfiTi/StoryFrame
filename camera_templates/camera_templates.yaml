@@ -1,0 +1,232 @@
+# 镜头模板库
+# 快节奏广告镜头标准化描述模板
+# LLM 的任务：从本库选择模板 → 填入商品变量 → 输出标准化画面描述
+#
+# 评分逻辑：生成的提示词 vs 模板要求 → 逐项打分 → 不达标则修正
+
+# ============================================================
+# 模板 1：快速推近碎裂
+# ============================================================
+- id: fast_push_shatter
+  name: 快速推近碎裂
+  category: 快节奏
+  applicable_scene: 酥脆类产品爆点开场，强调碎裂冲击瞬间
+
+  # 镜头维度定义
+  dimensions:
+    景别: 从中景快速推进到极近景
+    运镜: fast push-in + hard stop
+    速度: burst → freeze
+    角度: 45度俯拍
+    光线: 单侧硬光 + 轮廓光
+    色调: 暖调高对比
+    主体动作: 产品碎裂/崩解/飞溅
+    背景: 纯色深色虚化
+
+  # 标准化画面描述模板（变量用 {var} 占位）
+  image_prompt_template: >
+    A {product_state} with {texture_detail}, mid-shatter state with {fragment_count} fragments
+    separating center-screen. 45-degree overhead medium shot, rapidly closing to extreme close-up.
+    {surface_detail}. Single hard side-light from left creating sharp shadows on fragment edges,
+    rim light outlining the {product_name} silhouette. Solid {bg_color} background with subtle
+    radial gradient. Product centered in lower third of frame, fragments occupying mid-frame,
+    upper third empty for motion space. no text, no words, no letters, no logo, no watermark, no label
+
+  motion_hint_template: >
+    {product_name} shatters center-screen, {fragment_count} fragments fly outward radially
+    at burst speed ({burst_duration}s), decelerate and freeze at {freeze_distance} frame width,
+    particles <{particle_size} frame size
+
+  camera_motion_template: >
+    centered medium shot → fast push-in {push_distance}% closer → extreme close-up,
+    hard stop hold {hold_duration}s
+
+  video_prompt_template: >
+    [Initial: {product_name} mid-shatter, fragments at 40% trajectory, cracks visible but center intact]
+    → [fragments continue flying outward radially, decelerating over {burst_duration}s to freeze
+    at {freeze_distance} frame width]
+    → [camera fast push-in {push_distance}% closer to amplify impact, hard stop at close-up]
+    → [speed: burst to freeze]
+    → [fragments frozen in scattered positions, product center fully broken but recognizable]
+
+  # 变量说明
+  variables:
+    product_name: "产品英文名称"
+    product_state: "产品当前状态，如：crispy rectangular cracker / golden wafer bar"
+    texture_detail: "质感细节，如：visible layered flaky texture / rough golden-brown surface"
+    fragment_count: "碎片数量，如：3-4"
+    surface_detail: "表面细节描述"
+    bg_color: "背景颜色，如：dark charcoal / deep navy"
+    burst_duration: "爆发持续时间，如：0.3"
+    freeze_distance: "定格距离，如：15%"
+    particle_size: "颗粒大小，如：5%"
+    push_distance: "推进距离百分比，如：30"
+    hold_duration: "停顿时间，如：0.2"
+
+  # 评分标准（用于检查生成的提示词是否符合本模板要求）
+  scoring_criteria:
+    - criterion: "image_prompt 是否包含 mid-shatter 状态描述"
+      weight: 15
+    - criterion: "image_prompt 是否包含 45-degree overhead 拍摄角度"
+      weight: 10
+    - criterion: "image_prompt 是否包含单侧硬光 + 轮廓光描述"
+      weight: 10
+    - criterion: "image_prompt 是否以 no text/no watermark 结尾"
+      weight: 10
+    - criterion: "motion_hint 是否包含运动方向(radial)+速度曲线(burst→freeze)+幅度(百分比)"
+      weight: 20
+    - criterion: "camera_motion 是否包含起始构图+推进距离+终止构图+停顿状态"
+      weight: 15
+    - criterion: "video_prompt 是否包含完整的5段式剧本（初始→运动→镜头→速度→结束）"
+      weight: 15
+    - criterion: "所有英文字段词数在规定范围内（image_prompt 60-100词, motion_hint 25-50词）"
+      weight: 5
+
+# ============================================================
+# 模板 2：甩镜定格揭示
+# ============================================================
+- id: whip_pan_reveal
+  name: 甩镜定格揭示
+  category: 快节奏
+  适用场景: 中间帧转场，从一个卖点快速切换到下一个卖点
+
+  dimensions:
+    景别: 近景 → 甩镜 → 中景
+    运镜: whip pan + freeze
+    速度: burst → freeze
+    角度: 平视微侧
+    光线: 柔光 + 边缘光
+    色调: 高饱和自然色
+    主体动作: 产品从偏移位置滑入画面中心 / 配料飞入
+    背景: 纯色或渐变背景
+
+  image_prompt_template: >
+    A {product_state} with {texture_detail}, captured mid-arrival at {position} of frame,
+    motion blur trailing from {blur_direction} edge. Eye-level three-quarter shot.
+    {surface_detail}. Soft diffused studio lighting with crisp rim light on {product_name}
+    leading edge. {bg_description}. Product positioned at {position}, motion blur streak
+    from {blur_direction}, {empty_space} empty for arrival space.
+    no text, no words, no letters, no logo, no watermark, no label
+
+  motion_hint_template: >
+    {product_name} slides in from {blur_direction} at burst speed ({burst_duration}s),
+    decelerates and locks to center frame, {secondary_action} within {freeze_distance}
+
+  camera_motion_template: >
+    off-center close-up from {blur_direction} → whip pan horizontally to center →
+    centered medium shot, freeze hold {hold_duration}s
+
+  video_prompt_template: >
+    [Initial: {product_name} at frame edge with motion blur, partially visible]
+    → [{product_name} slides horizontally to center at burst speed, {secondary_action}]
+    → [camera whip pan from {blur_direction} to center, hard freeze on arrival]
+    → [speed: burst to freeze, whip pan duration {burst_duration}s]
+    → [{product_name} centered and stationary, {end_state}]
+
+  variables:
+    product_name: "产品英文名称"
+    product_state: "产品当前状态"
+    texture_detail: "质感细节"
+    surface_detail: "表面细节描述"
+    position: "画面位置，如：right third / left third"
+    blur_direction: "运动模糊方向，如：right / left"
+    bg_description: "背景描述"
+    empty_space: "留白位置，如：left two-thirds / right two-thirds"
+    burst_duration: "甩镜持续时间，如：0.25"
+    freeze_distance: "定格位置，如：center frame"
+    hold_duration: "停顿时间，如：0.3"
+    secondary_action: "次要动作，如：sauce droplets settling / crumbs bouncing"
+    end_state: "结束状态描述"
+
+  scoring_criteria:
+    - criterion: "image_prompt 是否包含 motion blur 描述"
+      weight: 15
+    - criterion: "image_prompt 是否包含 eye-level three-quarter shot 拍摄角度"
+      weight: 10
+    - criterion: "image_prompt 是否包含 rim light 光线描述"
+      weight: 10
+    - criterion: "image_prompt 是否以 no text/no watermark 结尾"
+      weight: 10
+    - criterion: "motion_hint 是否包含运动方向+速度曲线(burst→freeze)+定格位置"
+      weight: 20
+    - criterion: "camera_motion 是否包含 whip pan + freeze 描述"
+      weight: 15
+    - criterion: "video_prompt 是否包含完整的5段式剧本"
+      weight: 15
+    - criterion: "所有英文字段词数在规定范围内"
+      weight: 5
+
+# ============================================================
+# 模板 3：急速拉远全貌
+# ============================================================
+- id: snap_zoom_reveal
+  name: 急速拉远全貌
+  category: 快节奏
+  适用场景: 从细节急拉远展示产品全貌，揭示惊喜感
+
+  dimensions:
+    景别: 极近景 → 急拉远 → 全景
+    运镜: snap zoom out + hold
+    速度: burst → decelerate
+    角度: 略俯拍
+    光线: 体积光 / 逆光
+    色调: 高对比暖调
+    主体动作: 粉末/碎片/配料扩散 → 定格全貌
+    背景: 深色渐变背景，带光晕
+
+  image_prompt_template: >
+    A {product_state} with {texture_detail}, mid-burst state with {particles} expanding
+    outward from center. Macro close-up shot, about to zoom out to wide reveal.
+    {surface_detail}. Volumetric light beams from upper left, {product_name} rim-lit
+    against dark background, particles catching light highlights. Solid {bg_color}
+    background with radial light glow. Product centered, particles expanding to frame edges,
+    {empty_space} reserved for zoom-out reveal.
+    no text, no words, no letters, no logo, no watermark, no label
+
+  motion_hint_template: >
+    {particles} explode outward from {product_name} at burst speed ({burst_duration}s),
+    decelerate and settle at {settle_distance}, {product_name} remains centered and intact
+
+  camera_motion_template: >
+    extreme close-up on {focus_point} → snap zoom out to wide shot →
+    full product centered, hold {hold_duration}s
+
+  video_prompt_template: >
+    [Initial: extreme close-up on {focus_point}, {particles} beginning to expand]
+    → [{particles} burst outward radially, decelerating over {burst_duration}s,
+    {product_name} stays centered]
+    → [camera snap zoom out from macro to wide, revealing full product and surrounding particles]
+    → [speed: burst to decelerate, zoom completes in {zoom_duration}s]
+    → [{product_name} centered in wide shot, {particles} settled, full product visible and sharp]
+
+  variables:
+    product_name: "产品英文名称"
+    product_state: "产品当前状态"
+    texture_detail: "质感细节"
+    surface_detail: "表面细节描述"
+    particles: "扩散物描述，如：sugar powder / fine crumbs / sauce droplets"
+    bg_color: "背景颜色"
+    focus_point: "聚焦点，如：product surface / cracked edge / filling center"
+    burst_duration: "爆发持续时间，如：0.35"
+    settle_distance: "定格距离，如：frame edges / 20% frame width"
+    zoom_duration: "缩放持续时间，如：0.4"
+    hold_duration: "停顿时间，如：0.3"
+    empty_space: "留白区域"
+
+  scoring_criteria:
+    - criterion: "image_prompt 是否包含 mid-burst 扩散状态描述"
+      weight: 15
+    - criterion: "image_prompt 是否包含 macro close-up 起始景别"
+      weight: 10
+    - criterion: "image_prompt 是否包含 volumetric light 光线描述"
+      weight: 10
+    - criterion: "image_prompt 是否以 no text/no watermark 结尾"
+      weight: 10
+    - criterion: "motion_hint 是否包含运动方向(outward)+速度曲线(burst→decelerate)+定格距离"
+      weight: 20
+    - criterion: "camera_motion 是否包含 snap zoom out + hold 描述"
+      weight: 15
+    - criterion: "video_prompt 是否包含完整的5段式剧本"
+      weight: 15
+    - criterion: "所有英文字段词数在规定范围内"
+      weight: 5
