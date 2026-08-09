@@ -154,6 +154,37 @@ class GenerateImageWorker(QObject):
             self.error.emit(self.frame_index, str(e))
 
 
+class MotionSketchWorker(QThread):
+    """生成运动示意图的工作线程"""
+    progress = Signal(int, str)  # 进度百分比, 状态文字
+    finished_signal = Signal(bool, str, str, int)  # ok, message, local_path, frame_index
+
+    def __init__(self, mgr, frame, sketch_config, output_path, frame_index):
+        super().__init__()
+        self.mgr = mgr
+        self.frame = frame
+        self.sketch_config = sketch_config
+        self.output_path = output_path
+        self.frame_index = frame_index
+
+    def run(self):
+        try:
+            from core.motion_sketch import generate_motion_sketch
+            ok, path, url, msg = generate_motion_sketch(
+                self.mgr, self.frame, self.sketch_config, self.output_path,
+                on_progress=lambda p, t: self.progress.emit(p, t),
+            )
+            if ok:
+                self.frame["motion_sketch_path"] = path
+                if url:
+                    self.frame["motion_sketch_url"] = url
+            self.finished_signal.emit(ok, msg, path if ok else "", self.frame_index)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.finished_signal.emit(False, str(e), "", self.frame_index)
+
+
 class RegenerateFrameWorker(QObject):
     """重新生成单帧提示词的工作线程"""
     finished = Signal(int, object)  # frame_index, StoryboardFrame
@@ -379,7 +410,7 @@ class MainWindow(QMainWindow):
         status_row = QHBoxLayout()
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
-        self.progress_bar.setFixedHeight(4)
+        self.progress_bar.setFixedHeight(20)
         status_row.addWidget(self.progress_bar, 1)
         self.status_label = QLabel("就绪")
         self.status_label.setStyleSheet("color: #565f89; font-size: 11px;")
@@ -503,6 +534,7 @@ class MainWindow(QMainWindow):
         self.storyboard_view.frame_selected.connect(self._on_frame_selected)
         self.storyboard_view.frame_duration_changed.connect(self._on_frame_duration_changed)
         self.storyboard_view.frame_regenerate.connect(self._on_frame_regenerate)
+        self.storyboard_view.sketch_requested.connect(self._generate_motion_sketch)
         right_layout.addWidget(self.storyboard_view, stretch=1)
 
         # 底部操作栏
@@ -538,6 +570,18 @@ class MainWindow(QMainWindow):
         self.doubao_video_btn.clicked.connect(lambda: self._show_doubao_menu("video"))
         bottom_bar.addWidget(self.doubao_video_btn)
 
+        # H3 提示词按钮（点击弹出中文/英文选择）
+        self.h3_prompt_btn = QPushButton("🎙️ H3提示词")
+        self.h3_prompt_btn.setFixedHeight(30)
+        self.h3_prompt_btn.setStyleSheet(
+            "QPushButton { background: #bb9af7; color: #0f1117; font-size: 11px; font-weight: bold; border-radius: 6px; border: none; padding: 2px 12px; }"
+            "QPushButton:hover { background: #c9a9fc; }"
+            "QPushButton:disabled { background: #1f2233; color: #3b4056; }"
+        )
+        self.h3_prompt_btn.setEnabled(False)
+        self.h3_prompt_btn.clicked.connect(self._show_h3_menu)
+        bottom_bar.addWidget(self.h3_prompt_btn)
+
         # 视频生成按钮
         self.agnes_video_btn = QPushButton("🎥 生成视频")
         self.agnes_video_btn.setFixedHeight(30)
@@ -548,6 +592,8 @@ class MainWindow(QMainWindow):
         )
         self.agnes_video_btn.setEnabled(False)
         self.agnes_video_btn.clicked.connect(self._agnes_generate_video)
+
+        self._apply_video_provider_ui()
         bottom_bar.addWidget(self.agnes_video_btn)
 
         right_layout.addLayout(bottom_bar)
@@ -659,6 +705,8 @@ class MainWindow(QMainWindow):
                 color: #a9b1d6;
                 background: #11131a;
                 height: 20px;
+                font-size: 12px;
+                font-weight: bold;
             }
             QProgressBar::chunk {
                 background: #7aa2f7;
@@ -841,6 +889,8 @@ class MainWindow(QMainWindow):
         if dlg.exec():
             self.config = load_config()
             self.status_label.setText("设置已保存")
+            # 刷新视频 provider 按钮显示
+            self._apply_video_provider_ui()
             # 刷新分镜视图字体大小
             self.storyboard_view.reload_font_size()
             # 刷新模型切换器
@@ -1091,6 +1141,7 @@ class MainWindow(QMainWindow):
         self.export_pkg_btn.setEnabled(True)
         self.doubao_img_btn.setEnabled(True)
         self.doubao_video_btn.setEnabled(True)
+        self.h3_prompt_btn.setEnabled(True)
         self.agnes_video_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.status_label.setText(f"已生成 {len(storyboard.frames)} 帧分镜脚本（已缓存）")
@@ -1160,6 +1211,7 @@ class MainWindow(QMainWindow):
         self.export_pkg_btn.setEnabled(True)
         self.doubao_img_btn.setEnabled(True)
         self.doubao_video_btn.setEnabled(True)
+        self.h3_prompt_btn.setEnabled(True)
         self.agnes_video_btn.setEnabled(True)
         self.status_label.setText(f"已加载缓存版本：{len(frames)} 帧")
 
@@ -1200,7 +1252,7 @@ class MainWindow(QMainWindow):
             label = "图片"
         else:
             bgm_style = self.bgm_combo.currentText()
-            text = get_doubao_video_prompt(category, frames, frame_count, bgm_style, negative_words=template.negative_words, lang=lang)
+            text = get_doubao_video_prompt(category, frames, frame_count, bgm_style, negative_words=template.negative_words, lang=lang, style_name=template.name, style_words=", ".join(template.image_style_words), camera_words=", ".join(template.camera_style_words))
             label = "视频"
         if not text:
             return
@@ -1208,6 +1260,39 @@ class MainWindow(QMainWindow):
         QApplication.clipboard().setText(text)
         lang_label = "中文" if lang == "cn" else "英文"
         self.status_label.setText(f"已复制豆包{label}提示词（{lang_label} {frame_count} 帧）")
+
+    def _show_h3_menu(self):
+        """点击 H3 按钮时弹出中文/英文选择菜单"""
+        if not self.current_frames_data:
+            self.status_label.setText("请先生成分镜脚本")
+            return
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtCore import QPoint
+        btn = self.h3_prompt_btn
+        menu = QMenu(self)
+        menu.setStyleSheet("QMenu { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2e42; padding: 4px; } QMenu::item { padding: 4px 24px; border-radius: 4px; } QMenu::item:selected { background: #283457; }")
+        act_cn = menu.addAction("🇨🇳 中文")
+        act_en = menu.addAction("🇬🇧 英文")
+        act_cn.triggered.connect(lambda: self._copy_h3_prompt("cn"))
+        act_en.triggered.connect(lambda: self._copy_h3_prompt("en"))
+        pos = btn.mapToGlobal(QPoint(0, btn.height()))
+        menu.exec(pos)
+
+    def _copy_h3_prompt(self, lang: str):
+        """复制 H3 提示词到剪贴板"""
+        if not self.current_frames_data:
+            return
+        frames = self.current_frames_data
+        frame_count = len(frames)
+
+        from core.prompt_loader import get_h3_copy_prompt
+        text = get_h3_copy_prompt(frames, frame_count, lang=lang)
+        if not text:
+            return
+
+        QApplication.clipboard().setText(text)
+        lang_label = "中文" if lang == "cn" else "英文"
+        self.status_label.setText(f"已复制 H3 提示词（{lang_label} {frame_count} 帧）")
 
     def _get_product_summary(self) -> str:
         """获取商品摘要信息"""
@@ -1234,6 +1319,99 @@ class MainWindow(QMainWindow):
         # 如果没填类目，从名称里尝试提取
         name = self.product_name_input.text().strip()
         return name if name else "零食"
+
+    def _apply_video_provider_ui(self):
+        """根据视频 provider 切换按钮显示：API 直出按钮仅在 agnes 模式下显示"""
+        provider = self.config.get("video", {}).get("provider", "agnes")
+        self.agnes_video_btn.setVisible(provider == "agnes")
+
+    def _generate_motion_sketch(self, index: int, mode_override: str = ""):
+        """生成第 index 帧的运动示意图（黑白线稿+箭头，喂给视频模型）
+
+        mode_override: "" 使用设置中的生成方式；"ai" 强制 Agnes 生成；"hybrid" 强制混合精修
+        """
+        try:
+            if not self.current_frames_data:
+                self.status_label.setText("请先生成分镜脚本")
+                return
+            if not (0 <= index < len(self.current_frames_data)):
+                return
+            sketch_cfg = self.config.get("storyboard", {}).get("motion_sketch", {})
+            if not sketch_cfg.get("enabled", True):
+                QMessageBox.information(self, "提示", "运动示意图已在设置中关闭")
+                return
+            frame = self.current_frames_data[index]
+            mode = mode_override or sketch_cfg.get("mode", "programmatic")
+            if mode in ("ai", "hybrid"):
+                provider = self.config.get("image", {}).get("provider", "")
+                if provider != "agnes":
+                    QMessageBox.warning(
+                        self, "提示",
+                        f"AI/混合模式需要图片 provider=agnes（当前 {provider}），"
+                        "请到设置中切换，或改用程序化模式",
+                    )
+                    return
+
+            product_name = self.current_storyboard.product_name if self.current_storyboard else "output"
+            output_dir = os.path.join("outputs", product_name, "motion_sketch")
+            os.makedirs(output_dir, exist_ok=True)
+            frame_num = frame.get("frame", index + 1)
+            output_path = os.path.join(output_dir, f"frame_{frame_num}_sketch.png")
+
+            # 进度反馈：显示进度条 + 禁用草稿按钮，避免重复点击
+            self.progress_bar.setVisible(True)
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(0)
+            self.storyboard_view.set_sketch_buttons_enabled(False)
+            self.status_label.setText(f"正在生成第{frame_num}帧运动示意图（{mode}）...")
+
+            mgr = GenerationManager(self.config)
+            worker_cfg = dict(sketch_cfg)
+            worker_cfg["mode"] = mode
+            worker = MotionSketchWorker(
+                mgr=mgr,
+                frame=frame,
+                sketch_config=worker_cfg,
+                output_path=output_path,
+                frame_index=index,
+            )
+            self._sketch_worker = worker
+            self._sketch_mgr = mgr
+            worker.progress.connect(
+                lambda p, t: (
+                    self.progress_bar.setValue(p),
+                    self.status_label.setText(f"生成运动示意图... {p}% ({t})"),
+                )
+            )
+            worker.finished_signal.connect(
+                lambda ok, msg, path, idx: self._on_sketch_finished(ok, msg, path, idx)
+            )
+            worker.start()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.progress_bar.setVisible(False)
+            self.storyboard_view.set_sketch_buttons_enabled(True)
+            self.status_label.setText(f"运动示意图生成失败: {e}")
+            QMessageBox.critical(self, "生成失败", f"发生异常：\n{e}")
+
+    def _on_sketch_finished(self, ok: bool, msg: str, path: str, index: int):
+        """运动示意图生成完成"""
+        try:
+            self._sketch_mgr.close()
+            del self._sketch_worker
+            del self._sketch_mgr
+        except Exception:
+            pass
+        self.progress_bar.setVisible(False)
+        self.storyboard_view.set_sketch_buttons_enabled(True)
+        if ok:
+            self.storyboard_view.update_frame_sketch(index, path)
+            frame_num = self.current_frames_data[index].get("frame", index + 1)
+            self.status_label.setText(f"第{frame_num}帧运动示意图已生成：{path}")
+        else:
+            self.status_label.setText(f"运动示意图生成失败: {msg[:80]}")
+            QMessageBox.warning(self, "生成失败", msg)
 
     def _generate_single_image(self):
         """生成选中帧的图片"""
@@ -1532,6 +1710,12 @@ class MainWindow(QMainWindow):
         frame_data = self.current_frames_data[selected_idx]
         frame_num = frame_data.get("frame", selected_idx + 1)
 
+        # 运动示意图：启用且已有公网 URL 时，优先作为视频输入图
+        sketch_cfg = self.config.get("storyboard", {}).get("motion_sketch", {})
+        sketch_url = ""
+        if sketch_cfg.get("enabled", True) and sketch_cfg.get("use_for_video", True):
+            sketch_url = frame_data.get("motion_sketch_url", "") or ""
+
         # 构建视频提示词
         video_prompt = frame_data.get("video_prompt", "") or frame_data.get("video_prompt_cn", "")
         if not video_prompt:
@@ -1559,7 +1743,10 @@ class MainWindow(QMainWindow):
         mode_label = "图生视频" if is_image_to_video else "文生视频"
         msg = f"即将生成视频：\n\n模式：{mode_label}\n帧：第{frame_num}帧\n提示词：{prompt_preview}"
         if is_image_to_video:
-            msg += f"\n图片提示词：{image_prompt[:100]}..." if len(image_prompt) > 100 else f"\n图片提示词：{image_prompt}"
+            if sketch_url:
+                msg += "\n输入图片：运动示意图（公网 URL，自动使用）"
+            else:
+                msg += f"\n图片提示词：{image_prompt[:100]}..." if len(image_prompt) > 100 else f"\n图片提示词：{image_prompt}"
         msg += f"\n输出：{output_path}\n\n确认生成？"
         reply = QMB.question(self, "确认生成", msg, QMB.Yes | QMB.No)
         if reply != QMB.Yes:
@@ -1579,7 +1766,8 @@ class MainWindow(QMainWindow):
             finished_signal = Signal(bool, str)
 
             def __init__(self, mgr, prompt, image_prompt,
-                         output_path, is_image_to_video, video_config):
+                         output_path, is_image_to_video, video_config,
+                         sketch_url=""):
                 super().__init__()
                 self.mgr = mgr
                 self.prompt = prompt
@@ -1587,33 +1775,35 @@ class MainWindow(QMainWindow):
                 self.output_path = output_path
                 self.is_image_to_video = is_image_to_video
                 self.video_config = video_config
+                self.sketch_url = sketch_url
 
             def run(self):
                 try:
                     image_url = None
 
-                    # 图生视频：先用统一接口生成图片拿公网 URL
+                    # 图生视频：优先用运动示意图，否则生成产品图片拿公网 URL
                     if self.is_image_to_video:
-                        if not self.image_prompt:
+                        if not self.image_prompt and not self.sketch_url:
                             self.finished_signal.emit(False, "图生视频需要图片提示词")
                             return
 
-                        self.progress.emit(0, "正在生成图片...")
-
-                        w = self.video_config.get("width", 1024)
-                        h = self.video_config.get("height", 1024)
-                        img_size = f"{w}x{h}"
-
-                        ok, img_url, img_msg = self.mgr.generate_image_url(
-                            prompt=self.image_prompt,
-                            size=img_size,
-                        )
-                        if not ok:
-                            self.finished_signal.emit(False, f"图片生成失败: {img_msg}")
-                            return
-
-                        image_url = img_url
-                        self.progress.emit(5, "图片生成完成，开始生成视频...")
+                        if self.sketch_url:
+                            image_url = self.sketch_url
+                            self.progress.emit(5, "使用运动示意图作为输入，开始生成视频...")
+                        else:
+                            self.progress.emit(0, "正在生成图片...")
+                            w = self.video_config.get("width", 1024)
+                            h = self.video_config.get("height", 1024)
+                            img_size = f"{w}x{h}"
+                            ok, img_url, img_msg = self.mgr.generate_image_url(
+                                prompt=self.image_prompt,
+                                size=img_size,
+                            )
+                            if not ok:
+                                self.finished_signal.emit(False, f"图片生成失败: {img_msg}")
+                                return
+                            image_url = img_url
+                            self.progress.emit(5, "图片生成完成，开始生成视频...")
 
                     # 生成视频
                     ok, msg = self.mgr.generate_video(
@@ -1637,6 +1827,7 @@ class MainWindow(QMainWindow):
             output_path=output_path,
             is_image_to_video=is_image_to_video,
             video_config=video_config,
+            sketch_url=sketch_url,
         )
         self._video_worker = worker
         self._video_mgr = mgr
