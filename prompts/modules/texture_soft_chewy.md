@@ -51,6 +51,20 @@
 | 侧光 | single soft side-light from [direction] | 突出表面起伏 |
 | 体积光 | volumetric light beams with haze | 氛围感 |
 
+### 微动态词汇表（软糯类）
+| 微动态类型 | ✅ 描述术语 | 适用场景 |
+|-----------|-----------|----------|
+| 光泽呼吸 | glossy surface subtly shifting highlights, soft sheen pulsing | 表面光泽微微变化 |
+| 表面张力 | surface tension visible, slight wobble on curved surface | 轻压回弹时的表面波动 |
+| 淀粉飘散 | fine starch particles floating gently around product | 柔和的粉末飘浮 |
+| 弹性微颤 | elastic surface micro-vibrating after release, jiggle settling | 回弹后的微颤 |
+
+### 情绪氛围词汇表（软糯类）
+| 情绪类型 | 描述术语 | 适用场景 |
+|---------|---------|----------|
+| 高级感凝固 | time-frozen elegance, luxurious stillness in slow motion | 慢镜头展示质感 |
+| 温暖柔和 | warm gentle glow embracing product, soft warmth radiating | 展示软糯温暖感 |
+
 ## few-shot 质量参考示例（软糯类）
 
 **[原创] 麻糬压缩回弹**

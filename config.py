@@ -26,9 +26,9 @@ DEFAULT_CONFIG = {
             }
         },
     },
-    # 视频生成设置（Agnes AI）
+    # 视频生成设置（provider: agnes | doubao | comfyui）
     "video": {
-        "provider": "agnes",            # 目前仅支持 agnes
+        "provider": "agnes",            # agnes=API 直出 / doubao=手动复制提示词 / comfyui=本地预留
         "base_url": "https://apihub.agnes-ai.com/v1",
         "api_key": "",                  # Agnes AI API Key
         "model": "agnes-video-v2.0",
@@ -55,6 +55,17 @@ DEFAULT_CONFIG = {
     "storyboard": {
         "frame_count": 5,
         "duration": 15,  # 总时长（秒）
+        # 运动示意图（分镜蓝图）：黑白线稿+箭头，喂给视频模型理解运动
+        "motion_sketch": {
+            "enabled": True,
+            "mode": "programmatic",  # programmatic | ai | hybrid
+            "size": "1024x576",      # 画布尺寸（建议与视频比例一致）
+            "use_for_video": True,   # 图生视频时优先用示意图作为输入
+            # AI 模式提示词模板（占位符：{shape} {motion} {direction} {speed} {particles} {camera} {description}）
+            "ai_prompt": "black and white rough line sketch, motion storyboard blueprint, a single simple {shape} as the subject, no product detail, no color, hand-drawn style arrows showing {direction} {motion}, particle marks ({particles}) bursting outward, {camera}, minimal line art, white background, schematic diagram style",
+            # 混合精修提示词（图生图，作用于本地底稿）
+            "hybrid_prompt": "Preserve this motion sketch exactly as-is: same composition, same subject outline, arrows, particle marks and camera marks. Clean up rough edges only, keep black and white line style, no color, no product detail, no extra elements.",
+        },
     },
     # 商品目录
     "product": {

@@ -1,13 +1,13 @@
 # StoryFrame 项目状态
 
-> 最后更新: 2026-07-25 | 版本 v0.9.2
+> 最后更新: 2026-08-06 | 版本 v0.10.0
 
 ## 概述
 分镜图生成器 — 商品信息 → 分镜脚本 → 图片/视频提示词，PySide6 桌面应用。统一生成接口支持多 provider 切换。
 
 ## 当前状态
-- **版本**: v0.9.1
-- **阶段**: V2 两步生成实测 + transition 修复
+- **版本**: v0.10.0
+- **阶段**: 商业镜头预设库驱动架构（预设锁定运镜/角度/光线/速度/过渡，LLM 只填产品信息）
 
 ## 已完成
 - [x] 分镜脚本生成（LLM + JSON 流式解析）
@@ -36,80 +36,120 @@
 - [x] system_prompt 纯中文翻译约束
 - [x] 单帧重新生成（每帧卡片有 🔄 按钮，不满意可单独重生该帧提示词，保留已生成图片）
 - [x] 风格模板管理（设置对话框新增「🎨 风格模板」Tab，可增/删/复制/编辑模板，保存到 templates.json）
-- [x] **镜头模板库**（camera_templates/camera_templates.yaml）— 3 个快节奏标准化镜头模板（快速推近碎裂/甩镜定格揭示/急速拉远全貌）
+- [x] **镜头模板库扩充至 9 个**（3 快节奏 + 3 慢节奏 + 3 创意类）
 - [x] **镜头模板评分系统**（core/scoring.py）— 对照模板逐项打分，支持修正建议和反馈记录
-
-- [x] **动作相位系统（motion_phase）**: pre-action/mid-action/post-action/static 四阶段，解决图片与视频提示词不一致问题
+- [x] **动作相位系统（motion_phase）**: pre-action/mid-action/post-action/static 四阶段
+- [x] **P0: 镜头模板扩充** — 新增 6 个模板（品味揭示/环绕展示/微距焦点变换/滑动变焦冲击/俯拍旋转/移轴微缩）
+- [x] **P1: 帧间连贯性增强** — 上下文传递从简单描述升级为物理状态摘要（动作相位+运镜+动态趋势+过渡+视频起止状态），frame_prompt.md 新增物理状态连续性 5 项约束
+- [x] **P2: 动态表现力提升** — core.md 新增 4 层动态表现力体系（主体动作/微表情/环境互动/情绪氛围），4 个质感模块各新增微动态词汇表+情绪氛围词汇表
+- [x] **P3: 运动指令语义增强** — video_prompt 格式从箭头分隔改为自然语言（适配豆包/可灵/Runway 等主流模型），新增画质词+约束词，doubao_video_prompt.md 新增禁止动态+画质约束段
+- [x] **视频提示词模板精简** — doubao_video_prompt.md 从 2000+ 字缩减到 180 字，删除冗余的 motion_phase 详细说明和运动规范
+- [x] **风格参数注入视频提示词** — get_doubao_video_prompt 新增 style_name/style_words/camera_words 参数，UI 调用处同步传入，「灵动冲击」等风格特征真正传到视频模型
+- [x] **frame block 精简** — 从 6 行键值对改为 3 行紧凑格式（参考图状态+video_prompt+转场）
+- [x] **motion_phase 一致性约束** — frame_prompt.md 新增 motion_phase 与 motion_hint/image_prompt 严格一致性规则
+- [x] **video_prompt 词数收紧** — 从 40-80 词改为 40-70 词，超 70 必须删减情绪修饰语
+- [x] **禁止精确数值** — video_prompt 禁止写精确秒数和角度数值（如 0.6s, 270 degrees），用自然描述替代
+- [x] **image_prompt_cn 纯中文约束** — 新增技术术语翻译参考（slate→深灰石板等）+ 禁止残留英文单词
+- [x] **camera_motion 去箭头** — core.md 和 camera_templates.yaml 全部消除 → 箭头分隔，改为自然语句
+- [x] **LLM 空响应重试** — chat_json 新增 max_retries=2，空返回自动重试 2 次，间隔 2 秒
+- [x] **空结果警告** — generate_frame_detail 检测空结果并打印警告
+- [x] **运动示意图（分镜蓝图）** — `core/motion_sketch.py` 黑白线稿+箭头+粒子，喂给视频模型理解运动
+- [x] **示意图三模式** — programmatic（本地绘制）/ ai（Agnes 生成）/ hybrid（本地底稿+Agnes 精修）
+- [x] **运动信息启发式提取** — 从 motion_hint/video_prompt/camera_motion 关键词解析结构化运动字段
+- [x] **每帧 ✏️ 按钮 + 缩略图预览** — 一键生成/更新运动示意图，点击可放大
+- [x] **三模式草稿按钮** — 每帧 ✏️（按设置）/ 🎨（AI 生成）/ 🧬（混合精修），缩略图放大、预览点空白关闭
+- [x] **生成进度反馈** — 点击草稿按钮后进度条 + 分阶段状态（解析→绘制→调用接口→下载→完成），运行中禁用按钮，失败/异常弹窗
+- [x] **预览点任意处关闭** — 图片预览窗口内任意位置（图片/空白/提示文字）点击即关闭
+- [x] **进度条加高** — 从 4px 细条改为 20px，加粗 12px 百分比文字
+- [x] **草稿提示词可配置** — 设置里可编辑 AI 生成/混合精修提示词模板，占位符 {shape} {motion} {direction} {speed} {particles} {camera} {description}
+- [x] **图生视频优先用示意图** — 有示意图公网 URL 时直接作为视频输入
+- [x] **视频 provider 切换** — agnes（API 直出）/ doubao（手动复制）/ comfyui（预留）
+- [x] **修复 AgnesImageClient response_format 位置 bug** — 按文档移入 extra_body
 
 ## 进行中
-- [ ] V2 两步生成实测验证（基调质量 + 逐帧质量 vs 旧一次性生成）✅ transition 已验证
 - [ ] 评分系统 UI 集成（生成后自动评分+修正建议展示）
+- [ ] V2 两步生成实测验证（预设驱动 vs 旧 LLM 自由设计）
 
 ## 待办
 - [ ] 口味标签/负向词的端到端验证
 - [ ] UI 小屏幕滚动体验优化
-
-- [ ] 镜头模板扩充（慢节奏模板：缓慢推近/弧线环绕/微距焦点变换）
 - [ ] 反馈记录驱动的模板自动优化
-
-### 🔥 运镜与动态表现路线图
-- [x] **VM-P0-1**: 运镜-动态联动规则 → camera_motion 与 motion_hint 强绑定
-- [x] **VM-P0-2**: 运镜词汇库扩充 → 12+ 种运镜及场景适配
-- [x] **VM-P1-1**: 运镜节奏编排规则 → 开场冲击→中段加速→结尾收稳
-- [x] **VM-P1-2**: 速度曲线-帧时长绑定规则
-- [x] **VM-P2-1**: 图片提示词描述框架（六层结构+材质词汇表+灯光方案）
-- [x] **VM-P2-2**: 图片提示词 few-shot 案例库（4 类质感示例）
-- [x] **VM-P2-3**: 多模型推理支持（多 provider 配置 + 设置 UI + 主窗口快捷切换）
-
-### ✅ 视频提示词精细化路线图（已完成）
-- [x] **VP-P0-1**: motion_hint 三要素规则
-- [x] **VP-P0-2**: 豆包视频模板结构化升级
-- [x] **VP-P1-1**: 新增 video_prompt / video_prompt_cn 独立字段
-- [x] **VP-P1-2**: camera_motion 起止构图规则
-- [x] **VP-P2-1**: 帧间连贯性指令
-- [x] **VP-P2-2**: 负面动态描述
+- [ ] 根据目标模型动态切换 video prompt 模板（豆包/可灵/Runway 各有偏好）
+- [ ] 增加光影氛围字段（从场景设定推导或 LLM 生成）
+- [ ] 增加负面提示字段（为支持负面提示的模型生成对应负面提示）
 
 ## 已知问题
 - LLM 流式输出偶尔截断 → 已加固容错，待观察
-- 请求日志已加入 llm_request_*.txt
-- 帧5 image_prompt 偶发中英混杂（如「整齐」混入英文）→ 需在 frame_prompt 强化纯英文约束
-- 帧3/4/6 未匹配镜头模板（只有 3 个快节奏模板，缺少静态/创意类模板）
+- 评分系统尚未集成 UI
 
 ## 关键文件
 | 文件 | 职责 |
 |------|------|
 | core/generation_manager.py | 统一生成管理器（图片+视频） |
+| core/motion_sketch.py | 运动示意图（分镜蓝图）生成：程序化绘制 + Agnes AI 双模式 |
 | core/video_client.py | Agnes AI 视频客户端（被 GenerationManager 调用） |
-| core/image_client.py | 旧图片客户端（已由 GenerationManager 替代） |
 | core/llm_client.py | LLM 客户端 + JSON 提取容错 |
-| core/storyboard.py | 分镜生成 |
+| core/storyboard.py | 分镜生成（V2 两步生成 + 物理状态摘要 + 单帧重生成） |
 | core/templates.py | 风格模板 + JSON 加载 |
-| core/prompt_loader.py | 提示词加载器 |
+| core/prompt_loader.py | 提示词加载器（模块化组装 system prompt） |
 | core/product_parser.py | 商品解析 + Markdown 回写 |
 | core/scoring.py | 镜头模板评分系统 |
-| camera_templates/camera_templates.yaml | 镜头模板库（快节奏3模板） |
-| camera_templates/feedback_log.md | 测试反馈记录 |
-
+| camera_templates/camera_templates.yaml | 镜头模板库（9 模板：3快+3慢+3创意） |
+| prompts/modules/core.md | 系统提示词核心（含动态表现力 4 层体系） |
+| prompts/modules/frame_prompt.md | 逐帧生成提示词（含物理状态连续性约束） |
+| prompts/modules/texture_*.md | 4 个质感模块（各含微动态+情绪氛围词汇表） |
+| prompts/doubao_video_prompt.md | 豆包视频提示词模板（自然语言格式） |
+| docs/video_model_prompt_research.md | 视频模型 prompt 最佳实践调研报告 |
 | ui/main_window.py | 主窗口界面 |
-| prompts/*.md | 提示词模板 |
 
 ## 最近变更
-- **07-25**: transition 字段丢失修复 + V2 实测通过：frame_prompt.md 新增 transition 强制约束（必须写入 plan 指定值、不得改为 none）+ 过渡接口描述要求（whip pan 产品从对侧滑入/fade 渐显描述/morph 承接形变）+ JSON 输出模板新增 transition 字段。两轮 V2 实测：首轮 transition 4/6 丢失为 none → 修复后第二轮 6/6 全部正确保留，5 种过渡接口描述全部到位（whip pan 右侧滑入+运动模糊/speed ramp 静止加速/fade 光晕渐显）。帧1 完美匹配 fast_push_shatter 模板 8 项全 PASS。残留问题：image_prompt_cn 偶发中英混杂（settles/crust 未翻译）
-- **07-24**: 镜头模板库 + 评分系统：新建 camera_templates/ 目录（3 个快节奏 YAML 模板 + 反馈记录），新建 core/scoring.py（TemplateScorer 评分器 + record_feedback 反馈记录），新建 prompts/modules/scoring_prompt.md（评分 LLM 提示词）。模板包含标准化镜头维度+变量模板+8项评分标准（满分100，达标线85）
-- **07-22**: 单帧重新生成功能：storyboard.py 新增 regenerate_frame() 函数复用 generate_frame_detail 逻辑（temperature=0.9），FrameCard 卡片加 🔄 按钮，StoryboardView 新增 frame_regenerate 信号 + update_frame_data 方法，MainWindow 新增 RegenerateFrameWorker + _on_frame_regenerate/_on_regen_finished/_on_regen_error 处理链
-- **07-20**: 修复豆包图片复制英文提示词实际复制中文的 bug：`get_doubao_image_prompt`/`get_doubao_video_prompt` 新增 `lang` 参数直接选字段，去掉 `_copy_doubao_prompt` 中不可靠的后替换逻辑
-- **07-20**: 修复 Agnes 图片生成 400 错误：去掉 `response_format` 参数（Agnes 不支持），改为检查 `b64_json`/`url` 值非空判断返回格式，超时从 120s 提升到 300s
-- **07-20**: 统一生成接口架构：新建 GenerationManager 统一管图片和视频生成，provider 可切换（comfyui/kontext/sd/dalle/flux/agnes），图片和视频按钮统一走同一接口，设置 UI 统一，按钮文案改为"生成图片"/"生成视频"
-- **07-20**: Agnes 图生视频全链路：video_client.py 新增 AgnesImageClient，VideoWorker 改为先调图片API拿公网URL再传给视频API，修正视频轮询为 GET /v1/videos/{task_id}
-- **07-20**: 两步生成架构：generate_storyboard_v2（基调→逐帧精生成），新增 plan_prompt.md + frame_prompt.md 模板，UI 加 stage/frame_done 信号 + 进度条
-- **07-20**: 系统提示词模块化重构：system_prompt.md 拆分为 core.md + 4 个质感模块 + camera_motion.md，prompt_loader 按商品质感自动组装，token 节省 46-68%
-- **07-20**: VM-P0-1 + VM-P0-2 + VM-P1-1 + VM-P1-2 完成（运镜联动+词汇库16种+节奏编排+速度曲线绑定）
-- **07-20**: 新建运镜与动态表现路线图（VM-P0~P2 共 7 项），安装 prompt-images + ai-image-prompts-skill 技能
-- **07-19**: 视频提示词精细化 VP-P0-1 + VP-P0-2 + VP-P2-2 + VP-P1-1 + VP-P1-2 + VP-P2-1（全部完成）
-- **07-19**: 底部按钮精简为豆包图片/视频两个菜单按钮 + 画面描述去噪 + 纯中文约束
-- **07-18**: 视频提示词增强（画面描述+过渡+速度节奏）+ 视频方向输入框 + 商品列表修复 + 灵动冲击模板
-- **07-18**: 帧时长 duration_plan 验证通过 + SpinBox UI 修复 + 请求日志
-- **07-18**: JSON 解析容错增强 + STATUS.md 项目状态管理
+
+### v0.11.0 (2026-08-08) — 运动示意图（分镜蓝图）
+- 新增 `core/motion_sketch.py`：从分镜字段启发式提取主体/方向/速度/粒子/镜头 → 生成黑白线稿运动蓝图
+- 三种模式：`programmatic`（Pillow 本地绘制）/ `ai`（Agnes 图片 API 按提示词模板）/ `hybrid`（本地底稿 + Agnes 图生图拿公网 URL）
+- 示意图只画主体轮廓，不给产品外观细节（标注一确认）
+- UI：每帧卡片新增 ✏️ 按钮 + 示意图缩略图；图生视频时优先用示意图公网 URL 作为输入图
+- 设置：视频 provider 扩展为 agnes / doubao / comfyui 三选一；新增「运动示意图」设置组（启用/模式/画布尺寸/视频输入）
+- 修复 `AgnesImageClient.generate_image` 把 `response_format` 放在顶层的问题（文档要求放 `extra_body`）
+
+### v0.10.0 (2026-08-06) — 商业镜头预设库驱动架构
+- **核心改造**: 从 LLM 自由设计运镜 → 商业镜头预设锁定运镜/角度/光线/速度/过渡
+- 新增 `prompts/modules/shot_presets.md` — 12 个商业食品广告标准镜头预设（3 开场+6 中间+3 结尾）
+- 新增 `prompt_loader.py` 中 `SHOT_PRESETS` 字典 + `TEXTURE_PRESET_MATRIX` 质感-预设矩阵 + `get_preset_sequence()` 预设序列生成
+- 改造 `plan_prompt.md` — plan 阶段从预设库选镜头，不再自由设计运镜
+- 改造 `frame_prompt.md` — LLM 只填产品变量，运镜/角度/光线/速度曲线/过渡由预设锁定
+- 改造 `core.md` — 删除 LLM 自主设计运镜指令，改为预设驱动
+- 改造 `storyboard.py` — generate_storyboard_v2 自动计算预设序列，强制覆盖 plan 的运镜和过渡字段
+- 改造 `regenerate_frame` — 单帧重生成也传入预设参数
+- 预设按质感+帧位自动分配: 酥脆→碎裂开场+快切中段+全景结尾，软糯→慢推开场+形变中段+特写结尾
+
+### v0.9.5 (2026-08-04) — 视频提示词修复
+### v0.9.4 (2026-08-03) — P0-P3 动画表现力增强
+### v0.9.3 (2026-08-03) — 镜头模板扩充+帧间连贯性+动态表现力+运动指令语义
+- **08-04**: LLM 空响应修复（v0.9.4→v0.9.5）：
+  - 第6帧 LLM 返回空内容（Agnes API 偶发性空返回）→ chat_json 新增 max_retries=2 自动重试
+  - generate_frame_detail 新增空结果检测警告
+  - 验证 v0.9.4 修复效果：箭头全部清除 ✅、精确数值清除 ✅、camera_motion 自然语句 ✅、video_prompt 词数仍有超标（86词 vs 70词限制）
+- **08-03 (晚)**: 视频提示词质量修复（v0.9.3→v0.9.4）：
+  - doubao_video_prompt.md 从 2000+ 字精简到 180 字（删除冗余 motion_phase 说明和运动规范）
+  - get_doubao_video_prompt 注入风格参数（style_name/style_words/camera_words），UI 同步传入
+  - frame block 从 6 行键值对精简为 3 行紧凑格式
+  - frame_prompt.md 新增 motion_phase 与 motion_hint 一致性强约束
+  - video_prompt 词数限制从 40-80 收紧到 40-70 词
+  - 禁止 video_prompt 写精确秒数/角度数值
+  - image_prompt_cn 新增技术术语翻译参考表
+  - core.md + camera_templates.yaml 全部消除 → 箭头（103 处）
+- **08-03 (下午)**: P0-P3 动画表现力 4 方向增强全部完成：
+  - P0 镜头模板扩充：3→9 个模板（+品味揭示/环绕展示/微距焦点变换/滑动变焦冲击/俯拍旋转/移轴微缩）
+  - P1 帧间连贯性：storyboard.py 上下文传递从 description+camera_motion_cn 升级为物理状态摘要（6 维信息），frame_prompt.md 新增 5 项物理状态连续性约束
+  - P2 动态表现力：core.md 新增 4 层动态表现力体系（主体动作/微表情/环境互动/情绪氛围）+ 质感选择规则表，4 个质感模块各新增微动态词汇表+情绪氛围词汇表
+  - P3 运动指令语义：video_prompt 从 `[初始]→[运动]→[镜头]→[速度]→[结束]` 箭头格式改为自然语言连贯描述（适配豆包/可灵/Runway 等主流模型），新增画质词+约束词，doubao_video_prompt.md 新增禁止动态+画质约束段，camera_templates.yaml 中 3 个旧模板 video_prompt 同步更新
+- **07-25**: transition 字段丢失修复 + V2 实测通过
+- **07-24**: 镜头模板库 + 评分系统
+- **07-22**: 单帧重新生成功能
+- **07-20**: 统一生成接口 + Agnes 集成 + 两步生成 + 模块化提示词
+- **07-19**: 视频提示词精细化（VP-P0~P2 全部完成）
+- **07-18**: 视频提示词增强 + 视频方向输入框 + 商品列表修复
 - **07-17**: 提示词模板化 + 背景音乐 + 冲击强度/节奏策略
 - **07-16**: 刷新按钮 + 商品信息回写 + 豆包视频提示词修改
 - **07-15**: 项目创建，基础分镜生成

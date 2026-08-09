@@ -1,6 +1,7 @@
 """LLM 客户端 - 兼容 OpenAI API 格式（LMStudio / 远程 API）"""
 
 import json
+import ssl
 import httpx
 from typing import Optional
 
@@ -22,75 +23,147 @@ class LLMClient:
         return "".join(self.chat_stream(messages, temperature))
 
     def chat_stream(self, messages: list, temperature: float = 0.8):
-        """流式聊天，yield 每个文本片段"""
-        url = f"{self.base_url}/chat/completions"
-        headers = {
-            "Content-Type": "application/json",
-        }
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        """流式聊天，yield 每个文本片段。网络异常自动重试 1 次。"""
+        import time
+        
+        max_net_retries = 1
+        for net_attempt in range(max_net_retries + 1):
+            try:
+                url = f"{self.base_url}/chat/completions"
+                headers = {
+                    "Content-Type": "application/json",
+                }
+                if self.api_key:
+                    headers["Authorization"] = f"Bearer {self.api_key}"
 
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": 16384,
-            "stream": True,
-        }
-        # LMStudio 禁用 reasoning 的专有参数，仅本地模型使用
-        if "localhost" in self.base_url or "127.0.0.1" in self.base_url:
-            payload["chat_template_kwargs"] = {"enable_thinking": False}
+                payload = {
+                    "model": self.model,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": 16384,
+                    "stream": True,
+                }
+                # LMStudio 禁用 reasoning 的专有参数，仅本地模型使用
+                if "localhost" in self.base_url or "127.0.0.1" in self.base_url:
+                    payload["chat_template_kwargs"] = {"enable_thinking": False}
 
-        with self.client.stream("POST", url, json=payload, headers=headers, timeout=300.0) as resp:
-            resp.raise_for_status()
-            for line in resp.iter_lines():
-                if not line:
+                with self.client.stream("POST", url, json=payload, headers=headers, timeout=300.0) as resp:
+                    resp.raise_for_status()
+                    for line in resp.iter_lines():
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:]
+                            if data_str.strip() == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data_str)
+                                choices = chunk.get("choices", [])
+                                if choices:
+                                    delta = choices[0].get("delta", {})
+                                    content = delta.get("content", "")
+                                    if content:
+                                        yield content
+                            except json.JSONDecodeError:
+                                continue
+                return  # 成功完成，退出重试循环
+            except (httpx.RemoteProtocolError, httpx.ReadError, ConnectionError, ssl.SSLError) as e:
+                if net_attempt < max_net_retries:
+                    print(f"⚠️ 网络异常: {type(e).__name__}: {e}，2秒后重试...")
+                    time.sleep(2)
                     continue
-                if line.startswith("data: "):
-                    data_str = line[6:]
-                    if data_str.strip() == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data_str)
-                        choices = chunk.get("choices", [])
-                        if choices:
-                            delta = choices[0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                yield content
-                    except json.JSONDecodeError:
-                        continue
+                else:
+                    raise
+            except Exception as e:
+                # 其他异常不重试，直接抛出
+                raise
 
-    def chat_json(self, messages: list, temperature: float = 0.8, on_chunk=None) -> list | dict:
-        """发送聊天请求，尝试解析 JSON 响应。支持流式回调。"""
-        # 保存请求 prompt 到调试文件
+    def chat_json(self, messages: list, temperature: float = 0.8, on_chunk=None, max_retries: int = 2) -> list | dict:
+        """发送聊天请求，尝试解析 JSON 响应。支持流式回调。
+        
+        max_retries: 空响应或解析失败时的最大重试次数（默认 2）
+        """
         from pathlib import Path
         from datetime import datetime
+        import time
+        
         debug_dir = Path("outputs") / "_debug"
         debug_dir.mkdir(parents=True, exist_ok=True)
-        req_file = debug_dir / f"llm_request_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        with open(req_file, "w", encoding="utf-8") as f:
-            for i, msg in enumerate(messages):
-                f.write(f"=== {msg.get('role', '?')} (msg {i+1}) ===\n")
-                f.write(msg.get("content", ""))
-                f.write("\n\n")
+        
+        last_error = None
+        for attempt in range(max_retries + 1):
+            # 保存请求 prompt 到调试文件
+            req_file = debug_dir / f"llm_request_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            with open(req_file, "w", encoding="utf-8") as f:
+                for i, msg in enumerate(messages):
+                    f.write(f"=== {msg.get('role', '?')} (msg {i+1}) ===\n")
+                    f.write(msg.get("content", ""))
+                    f.write("\n\n")
 
-        if on_chunk:
-            # 流式模式：边收边回调
-            raw = ""
-            for chunk in self.chat_stream(messages, temperature):
-                raw += chunk
-                on_chunk(chunk)
-        else:
-            raw = self.chat(messages, temperature)
+            if on_chunk:
+                # 流式模式：边收边回调
+                raw = ""
+                try:
+                    for chunk in self.chat_stream(messages, temperature):
+                        raw += chunk
+                        on_chunk(chunk)
+                except (httpx.RemoteProtocolError, httpx.ReadError, ConnectionError, ssl.SSLError) as e:
+                    # 流式中途断开，用已收到的内容尝试解析
+                    if raw.strip():
+                        print(f"⚠️ 流式中途断开（已收到 {len(raw)} 字符），尝试用已有内容解析...")
+                    else:
+                        last_error = f"网络异常且无内容: {type(e).__name__}: {e}（尝试 {attempt+1}/{max_retries+1}）"
+                        print(f"⚠️ {last_error}")
+                        if attempt < max_retries:
+                            time.sleep(2)
+                            continue
+                        else:
+                            break
+            else:
+                try:
+                    raw = self.chat(messages, temperature)
+                except (httpx.RemoteProtocolError, httpx.ReadError, ConnectionError, ssl.SSLError) as e:
+                    last_error = f"网络异常: {type(e).__name__}: {e}（尝试 {attempt+1}/{max_retries+1}）"
+                    print(f"⚠️ {last_error}")
+                    if attempt < max_retries:
+                        time.sleep(2)
+                        continue
+                    else:
+                        break
 
-        # 保存原始响应到调试文件
-        debug_file = debug_dir / f"llm_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        with open(debug_file, "w", encoding="utf-8") as f:
-            f.write(raw)
+            # 保存原始响应到调试文件
+            debug_file = debug_dir / f"llm_raw_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            with open(debug_file, "w", encoding="utf-8") as f:
+                f.write(raw)
 
-        # 尝试提取 JSON
-        return self._extract_json(raw)
+            # 空响应检查
+            if not raw.strip():
+                last_error = f"LLM 返回空内容（尝试 {attempt+1}/{max_retries+1}）"
+                print(f"⚠️ {last_error}，{'重试中...' if attempt < max_retries else '已达最大重试次数'}")
+                if attempt < max_retries:
+                    time.sleep(2)
+                    continue
+                else:
+                    break
+            
+            # 尝试提取 JSON
+            result = self._extract_json(raw)
+            
+            # 检查结果是否为空 dict/list
+            if isinstance(result, (list, dict)) and not result:
+                last_error = f"LLM 返回内容但 JSON 解析为空（尝试 {attempt+1}/{max_retries+1}）"
+                print(f"⚠️ {last_error}，{'重试中...' if attempt < max_retries else '已达最大重试次数'}")
+                if attempt < max_retries:
+                    time.sleep(2)
+                    continue
+                else:
+                    break
+            
+            return result
+        
+        # 所有重试都失败，返回空 dict
+        print(f"❌ {last_error}")
+        return {}
 
     @staticmethod
     def _extract_json(text: str) -> list | dict:

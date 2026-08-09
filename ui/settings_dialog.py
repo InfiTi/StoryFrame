@@ -5,10 +5,11 @@ from PySide6.QtWidgets import (
     QComboBox, QSpinBox, QDoubleSpinBox,
     QDialogButtonBox, QGroupBox, QMessageBox,
     QPushButton, QHBoxLayout, QFileDialog, QLabel,
-    QTabWidget, QWidget, QStackedWidget,
+    QTabWidget, QWidget, QStackedWidget, QCheckBox, QTextEdit,
 )
 from PySide6.QtCore import Qt
 from config import load_config, save_config, get_llm_config
+from core.motion_sketch import DEFAULT_AI_PROMPT, DEFAULT_HYBRID_PROMPT
 
 
 # Provider 分类
@@ -301,9 +302,14 @@ class SettingsDialog(QDialog):
         vid_form = QFormLayout(vid_group)
 
         self.vid_provider = QComboBox()
-        self.vid_provider.addItems(["agnes"])
+        self.vid_provider.addItems(["agnes", "doubao", "comfyui"])
         self.vid_provider.setCurrentText(self.config.get("video", {}).get("provider", "agnes"))
         vid_form.addRow("Provider：", self.vid_provider)
+
+        self.vid_provider_hint = QLabel("")
+        self.vid_provider_hint.setWordWrap(True)
+        self.vid_provider_hint.setStyleSheet("color: #585b70; font-size: 11px;")
+        vid_form.addRow("", self.vid_provider_hint)
 
         self.vid_base_url = QLineEdit(
             self.config.get("video", {}).get("base_url", "https://apihub.agnes-ai.com/v1")
@@ -372,9 +378,42 @@ class SettingsDialog(QDialog):
         self.vid_test_btn.clicked.connect(self._test_video_connection)
         vid_form.addRow("", self.vid_test_btn)
 
+        # 等所有字段建好后再绑定 provider 切换
+        self.vid_provider.currentTextChanged.connect(self._on_vid_provider_changed)
+        self._on_vid_provider_changed(self.vid_provider.currentText())
+
         vlayout.addWidget(vid_group)
         vlayout.addStretch()
         return tab
+
+    def _on_vid_provider_changed(self, provider: str):
+        """视频 provider 切换：agnes=API 直出，doubao=手动复制，comfyui=预留"""
+        fields = [
+            self.vid_base_url, self.vid_api_key, self.vid_model,
+            self.vid_image_model, self.vid_size, self.vid_num_frames,
+            self.vid_frame_rate, self.vid_negative, self.vid_poll,
+            self.vid_timeout, self.vid_test_btn,
+        ]
+        if provider == "agnes":
+            for w in fields:
+                w.setEnabled(True)
+            self.vid_provider_hint.setText(
+                "Agnes API 直出：App 内直接生成图片和视频（当前免费）"
+            )
+        elif provider == "doubao":
+            for w in fields:
+                w.setEnabled(False)
+            self.vid_provider_hint.setText(
+                "豆包手动模式：在 App 内复制图片/视频提示词，"
+                "去豆包网页或客户端用对应图片生成视频"
+            )
+        else:  # comfyui
+            for w in fields:
+                w.setEnabled(False)
+            self.vid_base_url.setEnabled(True)
+            self.vid_provider_hint.setText(
+                "ComfyUI 本地模式：预留，后续接入本地图生视频工作流"
+            )
 
     # ==================== Tab: 分镜 & 商品 ====================
 
@@ -397,6 +436,70 @@ class SettingsDialog(QDialog):
         sb_form.addRow("默认总时长（秒）：", self.sb_duration)
 
         vlayout.addWidget(sb_group)
+
+        # 运动示意图设置
+        ms_group = QGroupBox("运动示意图（分镜蓝图）")
+        ms_form = QFormLayout(ms_group)
+        ms_cfg = self.config.get("storyboard", {}).get("motion_sketch", {})
+
+        self.ms_enabled = QCheckBox("启用")
+        self.ms_enabled.setChecked(ms_cfg.get("enabled", True))
+        ms_form.addRow("启用：", self.ms_enabled)
+
+        self.ms_mode = QComboBox()
+        self.ms_mode.addItems([
+            "programmatic（本地绘制）",
+            "ai（Agnes 生成）",
+            "hybrid（本地底稿+Agnes 精修）",
+        ])
+        mode_idx = {"programmatic": 0, "ai": 1, "hybrid": 2}.get(
+            ms_cfg.get("mode", "programmatic"), 0
+        )
+        self.ms_mode.setCurrentIndex(mode_idx)
+        ms_form.addRow("生成方式：", self.ms_mode)
+
+        self.ms_size = QComboBox()
+        self.ms_size.addItems([
+            "1024x576 (16:9)", "1024x1024 (1:1)", "736x1312 (9:16)",
+        ])
+        cur_size = str(ms_cfg.get("size", "1024x576"))
+        for i in range(self.ms_size.count()):
+            if cur_size in self.ms_size.itemText(i):
+                self.ms_size.setCurrentIndex(i)
+                break
+        ms_form.addRow("画布尺寸：", self.ms_size)
+
+        self.ms_use_video = QCheckBox("图生视频时优先用示意图作为输入")
+        self.ms_use_video.setChecked(ms_cfg.get("use_for_video", True))
+        ms_form.addRow("视频输入：", self.ms_use_video)
+
+        self.ms_ai_prompt = QTextEdit()
+        self.ms_ai_prompt.setPlainText(str(ms_cfg.get("ai_prompt", "")) or DEFAULT_AI_PROMPT)
+        self.ms_ai_prompt.setFixedHeight(96)
+        self.ms_ai_prompt.setAcceptRichText(False)
+        ms_form.addRow("AI 生成提示词：", self.ms_ai_prompt)
+
+        self.ms_hybrid_prompt = QTextEdit()
+        self.ms_hybrid_prompt.setPlainText(
+            str(ms_cfg.get("hybrid_prompt", "")) or DEFAULT_HYBRID_PROMPT
+        )
+        self.ms_hybrid_prompt.setFixedHeight(64)
+        self.ms_hybrid_prompt.setAcceptRichText(False)
+        ms_form.addRow("混合精修提示词：", self.ms_hybrid_prompt)
+
+        var_hint = QLabel(
+            "占位符：{shape} {motion} {direction} {speed} {particles} {camera} {description}"
+        )
+        var_hint.setWordWrap(True)
+        var_hint.setStyleSheet("color: #585b70; font-size: 11px;")
+        ms_form.addRow("", var_hint)
+
+        ms_hint = QLabel("提示：ai / hybrid 模式需要「图片 provider = agnes」")
+        ms_hint.setWordWrap(True)
+        ms_hint.setStyleSheet("color: #585b70; font-size: 11px;")
+        ms_form.addRow("", ms_hint)
+
+        vlayout.addWidget(ms_group)
 
         # 商品目录
         prod_group = QGroupBox("商品目录")
@@ -483,6 +586,16 @@ class SettingsDialog(QDialog):
         # 分镜
         self.config["storyboard"]["frame_count"] = self.sb_frames.value()
         self.config["storyboard"]["duration"] = self.sb_duration.value()
+
+        # 运动示意图
+        ms_cfg = self.config.setdefault("storyboard", {}).setdefault("motion_sketch", {})
+        ms_cfg["enabled"] = self.ms_enabled.isChecked()
+        ms_cfg["mode"] = ["programmatic", "ai", "hybrid"][self.ms_mode.currentIndex()]
+        ms_size_match = re.match(r'(\d+)x(\d+)', self.ms_size.currentText())
+        ms_cfg["size"] = ms_size_match.group(0) if ms_size_match else "1024x576"
+        ms_cfg["use_for_video"] = self.ms_use_video.isChecked()
+        ms_cfg["ai_prompt"] = self.ms_ai_prompt.toPlainText().strip()
+        ms_cfg["hybrid_prompt"] = self.ms_hybrid_prompt.toPlainText().strip()
 
         # 商品
         self.config.setdefault("product", {})

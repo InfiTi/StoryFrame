@@ -51,6 +51,21 @@
 | 侧光 | single hard side-light from [direction] | 突出流动质感 |
 | 体积光 | volumetric light beams with haze | 氛围感、热气感 |
 
+### 微动态词汇表（液态/夹心类）
+| 微动态类型 | ✅ 描述术语 | 适用场景 |
+|-----------|-----------|----------|
+| 酱汁微颤 | viscous sauce surface micro-rippling, droplet surface tension wobbling | 流动中酱汁的轻微震荡 |
+| 气泡生成破裂 | tiny bubbles forming and popping on surface, carbonation rising | 饮料/碳酸类产品 |
+| 滴落涟漪 | single droplet falling with splash ripple, viscous thread stretching | 滴落瞬间 |
+| 蒸汽袅袅 | faint steam wisps rising gently, heat vapor curling upward | 热食类产品 |
+| 光泽流动 | glossy surface reflection shifting, wet sheen sliding slowly | 涂层表面的光泽变化 |
+
+### 情绪氛围词汇表（液态/夹心类）
+| 情绪类型 | 描述术语 | 适用场景 |
+|---------|---------|----------|
+| 温暖流动 | warm appetite-inducing flow radiating, golden warmth spreading outward | 展示流心/爆浆的食欲感 |
+| 甜蜜氤氲 | sweet aromatic mist enveloping, sugary haze floating | 甜品/夹心类氛围 |
+
 ## few-shot 质量参考示例（液态/夹心类）
 
 **[原创] 夹心爆浆流心**

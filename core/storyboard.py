@@ -5,12 +5,13 @@
 """
 
 import json
+import re
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, field, asdict
 from typing import List, Optional
 from .templates import StyleTemplate
-from .prompt_loader import get_system_prompt, get_user_prompt, get_plan_prompt, get_frame_prompt
+from .prompt_loader import get_system_prompt, get_user_prompt, get_plan_prompt, get_frame_prompt, detect_texture_category, get_preset_sequence, get_preset_dimensions_str, get_preset_transition, SHOT_PRESETS
 from .llm_client import LLMClient
 from .product_parser import ProductInfo, build_texture_description
 
@@ -369,6 +370,7 @@ def generate_plan(
     total_duration: int,
     product_info: Optional[ProductInfo] = None,
     direction: str = "",
+    preset_sequence: list = None,
     on_chunk=None,
 ) -> list:
     """第一步：生成整体基调方案（每帧只含骨架信息，不含具体提示词）"""
@@ -383,6 +385,14 @@ def generate_plan(
     camera_words = ", ".join(template.camera_style_words)
     texture_str = _build_texture_str(product_info)
     direction_line = f"\n【视频方向指引】\n{direction}\n" if direction else ""
+    
+    # 注入预设序列信息
+    preset_info = ""
+    if preset_sequence:
+        preset_lines = []
+        for i, pid in enumerate(preset_sequence):
+            preset_lines.append(f"  - 第{i+1}帧: {pid}")
+        preset_info = f"\n【预设分配方案（必须遵守）】\n" + "\n".join(preset_lines) + "\n"
 
     user_msg = f"""请为以下产品设计 {frame_count} 帧分镜方案。
 
@@ -398,7 +408,7 @@ def generate_plan(
 图片风格关键词：{style_words}
 镜头风格关键词：{camera_words}
 节奏：{template.pacing}
-{direction_line}请输出 JSON 数组。"""
+{direction_line}{preset_info}请输出 JSON 数组。"""
 
     messages = [
         {"role": "system", "content": plan_template},
@@ -417,6 +427,90 @@ def generate_plan(
     return result if isinstance(result, list) else []
 
 
+def _build_frame_state_summary(frame: StoryboardFrame, is_prev: bool = True) -> str:
+    """构建帧的物理状态摘要，用于上下文衔接
+    
+    返回结构化信息：画面描述 + 运镜结束状态 + 动作相位 + 过渡方式 + 产品物理状态
+    比原来的简单 description + camera_motion_cn 信息量大 3 倍
+    """
+    role = "上一帧" if is_prev else "下一帧"
+    parts = [f"【{role}物理状态摘要】"]
+    
+    # 1. 画面功能描述
+    parts.append(f"画面：{frame.description}")
+    
+    # 2. 动作相位 + 物理状态
+    phase = frame.motion_phase or "static"
+    phase_desc = {
+        "pre-action": "产品处于动作前静止状态",
+        "mid-action": "产品处于动作进行中（40-60%瞬间）",
+        "post-action": "产品处于动作结束后状态",
+        "static": "产品静止展示",
+    }.get(phase, "产品静止")
+    parts.append(f"动作相位：{phase}（{phase_desc}）")
+    
+    # 3. 运镜状态
+    camera = frame.camera_motion_cn or frame.camera_motion or ""
+    if camera:
+        parts.append(f"运镜：{camera}")
+    
+    # 4. 动态趋势（关键物理信息）
+    motion = frame.motion_hint_cn or frame.motion_hint or ""
+    if motion:
+        parts.append(f"产品动态：{motion}")
+    
+    # 5. 过渡方式
+    transition = frame.transition or "none"
+    if transition and transition.lower() != "none":
+        transition_cn = {
+            "hard cut": "硬切", "whip pan": "甩镜转场", 
+            "speed ramp": "变速过渡", "fade": "渐变", "morph": "形变过渡"
+        }.get(transition.lower(), transition)
+        if is_prev:
+            parts.append(f"过渡到本帧：{transition_cn}")
+        else:
+            parts.append(f"本帧过渡到它：{transition_cn}")
+    
+    # 6. video_prompt 的结束/起始状态（最关键的物理衔接信息）
+    video_text = frame.video_prompt_cn or frame.video_prompt or ""
+    if video_text:
+        if is_prev:
+            # 提取上一帧的结束状态（句号分隔的最后一句）
+            sentences = [s.strip() for s in video_text.replace('，', ',').replace('。', '.').split('.') if s.strip()]
+            if len(sentences) >= 2:
+                ending = sentences[-1]
+                parts.append(f"结束状态：{ending}")
+            elif sentences:
+                parts.append(f"结束状态：{sentences[-1]}")
+        else:
+            # 提取下一帧的起始状态（第一个逗号/句号前的内容）
+            first_clause = re.split(r'[,，.。]', video_text)
+            if first_clause and first_clause[0].strip():
+                parts.append(f"起始状态：{first_clause[0].strip()}")
+    
+    return " | ".join(parts)
+
+
+def _build_plan_state_summary(plan_item: dict, is_next: bool = True) -> str:
+    """构建 plan 阶段的帧状态摘要（用于尚未生成的帧）"""
+    role = "下一帧" if is_next else "上一帧"
+    parts = [f"【{role}方案摘要】"]
+    parts.append(f"画面：{plan_item.get('description', '')}")
+    parts.append(f"运镜：{plan_item.get('camera_motion_type', '')}")
+    
+    transition = plan_item.get('transition', 'none')
+    if transition and transition.lower() != 'none':
+        transition_cn = {
+            "hard cut": "硬切", "whip pan": "甩镜转场",
+            "speed ramp": "变速过渡", "fade": "渐变", "morph": "形变过渡"
+        }.get(transition.lower(), transition)
+        parts.append(f"过渡方式：{transition_cn}")
+    
+    parts.append(f"焦点：{plan_item.get('focus', '')}")
+    
+    return " | ".join(parts)
+
+
 def generate_frame_detail(
     llm: LLMClient,
     frame_plan: dict,
@@ -429,6 +523,8 @@ def generate_frame_detail(
     product_info: Optional[ProductInfo] = None,
     prev_frame_ending: str = "",
     next_frame_starting: str = "",
+    preset_id: str = "",
+    preset_dimensions: str = "",
     on_chunk=None,
 ) -> StoryboardFrame:
     """第二步：为单帧生成完整提示词"""
@@ -464,6 +560,8 @@ def generate_frame_detail(
         texture_info=texture_str or '未知',
         prev_frame_ending=prev_frame_ending or '（第一帧，无上一帧）',
         next_frame_starting=next_frame_starting or '（最后一帧，无下一帧）',
+        preset_id=preset_id,
+        preset_dimensions=preset_dimensions,
     )
 
     # 组合系统提示词：模块化规则 + 帧生成指令
@@ -479,6 +577,10 @@ def generate_frame_detail(
     # 兼容 list 和 dict
     if isinstance(result, list):
         result = result[0] if result else {}
+
+    # 空结果检查：如果关键字段全部为空，记录警告
+    if not result.get("image_prompt") and not result.get("motion_hint"):
+        print(f"⚠️ 第 {frame_num} 帧 LLM 返回空结果，将使用空值占位")
 
     # 保存调试文件
     debug_dir = Path("outputs") / "_debug"
@@ -527,6 +629,11 @@ def generate_storyboard_v2(
     - on_frame_done(frame_num, frame): 单帧完成回调
     - on_stage(stage: str): 阶段切换回调 ('plan' / 'frame:N/total')
     """
+    # === 计算预设序列 ===
+    texture_str = _build_texture_str(product_info)
+    texture_cat = detect_texture_category(texture_str)
+    preset_seq = get_preset_sequence(texture_cat, frame_count)
+    
     # === 第一步：生成基调 ===
     if on_stage:
         on_stage("plan")
@@ -540,11 +647,32 @@ def generate_storyboard_v2(
         total_duration=total_duration,
         product_info=product_info,
         direction=direction,
+        preset_sequence=preset_seq,
         on_chunk=on_plan_chunk,
     )
 
     if not plan:
         raise RuntimeError("基调生成失败：LLM 未返回有效方案")
+
+    # === 用预设的运镜和过渡覆盖 plan 结果（强制约束）===
+    for i, p in enumerate(plan):
+        if i < len(preset_seq):
+            preset = SHOT_PRESETS.get(preset_seq[i])
+            if preset:
+                dims = preset["dimensions"]
+                # 覆盖运镜类型为预设的运镜
+                p["camera_motion_type"] = dims.get("运镜", p.get("camera_motion_type", ""))
+                # 覆盖过渡方式为预设的过渡（第1帧保持 none）
+                if i > 0:
+                    # 当前帧的 transition = 上一帧预设的“过渡到下一帧”
+                    prev_preset = SHOT_PRESETS.get(preset_seq[i-1])
+                    if prev_preset:
+                        prev_transition = prev_preset["dimensions"].get("过渡到下一帧", "hard cut")
+                        p["transition"] = prev_transition
+                else:
+                    p["transition"] = "none"
+                # 添加 preset_id 到 plan
+                p["preset_id"] = preset_seq[i]
 
     # 构建方案摘要（供逐帧生成时参考）
     plan_summary_lines = []
@@ -564,16 +692,16 @@ def generate_storyboard_v2(
         if on_stage:
             on_stage(f"frame:{frame_num}/{total_frames}")
 
-        # 上下文衔接
+        # 上下文衔接（物理状态摘要，非简单描述）
         prev_ending = ""
         next_starting = ""
         if i > 0:
             prev_frame = frames[-1] if frames else None
             if prev_frame:
-                prev_ending = f"{prev_frame.description}，运镜: {prev_frame.camera_motion_cn}"
+                prev_ending = _build_frame_state_summary(prev_frame, is_prev=True)
         if i < len(plan) - 1:
             next_plan = plan[i + 1]
-            next_starting = f"{next_plan.get('description', '')}，运镜: {next_plan.get('camera_motion_type', '')}"
+            next_starting = _build_plan_state_summary(next_plan, is_next=True)
 
         frame = generate_frame_detail(
             llm=llm,
@@ -587,6 +715,8 @@ def generate_storyboard_v2(
             product_info=product_info,
             prev_frame_ending=prev_ending,
             next_frame_starting=next_starting,
+            preset_id=preset_seq[i] if i < len(preset_seq) else "",
+            preset_dimensions=get_preset_dimensions_str(preset_seq[i]) if i < len(preset_seq) else "",
             on_chunk=on_frame_chunk,
         )
         frames.append(frame)
@@ -638,15 +768,15 @@ def regenerate_frame(
         )
     plan_summary = "\n".join(plan_summary_lines)
     
-    # 上下文衔接
+    # 上下文衔接（物理状态摘要）
     prev_ending = ""
     next_starting = ""
     if frame_index > 0:
         prev = frames[frame_index - 1]
-        prev_ending = f"{prev.description}，运镜: {prev.camera_motion_cn or prev.camera_motion}"
+        prev_ending = _build_frame_state_summary(prev, is_prev=True)
     if frame_index < len(frames) - 1:
         nxt = frames[frame_index + 1]
-        next_starting = f"{nxt.description}，运镜: {nxt.camera_motion_cn or nxt.camera_motion}"
+        next_starting = _build_frame_state_summary(nxt, is_next=True)
     
     # 构建帧方案（从现有帧提取）
     frame_plan = {
@@ -661,6 +791,12 @@ def regenerate_frame(
     texture_str = _build_texture_str(product_info)
     style_words = ", ".join(template.image_style_words)
     camera_words = ", ".join(template.camera_style_words)
+    
+    # 计算预设序列，获取当前帧的预设
+    texture_cat = detect_texture_category(texture_str)
+    preset_seq = get_preset_sequence(texture_cat, len(frames))
+    current_preset_id = preset_seq[frame_index] if frame_index < len(preset_seq) else ""
+    current_preset_dims = get_preset_dimensions_str(current_preset_id) if current_preset_id else ""
     
     # 系统提示词
     sys_prompt = get_system_prompt(product_texture=texture_str)
@@ -681,6 +817,8 @@ def regenerate_frame(
         texture_info=texture_str or '未知',
         prev_frame_ending=prev_ending or '（第一帧，无上一帧）',
         next_frame_starting=next_starting or '（最后一帧，无下一帧）',
+        preset_id=current_preset_id,
+        preset_dimensions=current_preset_dims,
     )
     
     full_sys = sys_prompt + "\n\n---\n\n" + frame_sys

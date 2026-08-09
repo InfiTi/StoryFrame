@@ -51,6 +51,20 @@
 | 侧光 | single hard side-light from [direction] | 突出冰晶折射 |
 | 轮廓光 | rim light outlining edges | 突出雾气轮廓 |
 
+### 微动态词汇表（冰爽类）
+| 微动态类型 | ✅ 描述术语 | 适用场景 |
+|-----------|-----------|----------|
+| 雾气袅袅 | cold mist curling upward gently, white vapor drifting skyward | 冷雾从产品上升 |
+| 冷凝结珠 | condensation droplets forming and growing, water beads sliding slowly | 罐装/瓶装冷饮表面 |
+| 冰晶折射闪烁 | ice crystals catching light and sparkling, frost glinting subtly | 冰晶表面的光泽变化 |
+| 霜层剥落 | frost flakes detaching softly, ice layer cracking silently | 冰棒/冻品表面 |
+
+### 情绪氛围词汇表（冰爽类）
+| 情绪类型 | 描述术语 | 适用场景 |
+|---------|---------|----------|
+| 清凉扩散 | cool refreshing aura spreading outward, icy chill radiating | 展示冰爽感 |
+| 夏日透爽 | crisp summer freshness, cooling breeze sensation | 饮料/冰淇淋类 |
+
 ## few-shot 质量参考示例（冰爽类）
 
 **[原创] 冰霜饮料罐冷凝**

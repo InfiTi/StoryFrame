@@ -269,15 +269,15 @@ class AgnesImageClient:
         """
         url = f"{self.base_url}/images/generations"
 
+        # 注意：response_format 必须放在 extra_body 里，不能放顶层（Agnes 文档要求）
+        body = dict(extra_body or {})
+        body.setdefault("response_format", "url")
         payload = {
             "model": self.model,
             "prompt": prompt,
             "size": size,
-            "response_format": "url",
+            "extra_body": body,
         }
-
-        if extra_body:
-            payload["extra_body"] = extra_body
 
         try:
             resp = self.client.post(url, json=payload, headers=self._headers())

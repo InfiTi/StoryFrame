@@ -1,8 +1,8 @@
 # 镜头模板库
 # 快节奏广告镜头标准化描述模板
-# LLM 的任务：从本库选择模板 → 填入商品变量 → 输出标准化画面描述
+# LLM 的任务：从本库选择模板, 填入商品变量, 输出标准化画面描述
 #
-# 评分逻辑：生成的提示词 vs 模板要求 → 逐项打分 → 不达标则修正
+# 评分逻辑：生成的提示词 vs 模板要求, 逐项打分, 不达标则修正
 
 # ============================================================
 # 模板 1：快速推近碎裂
@@ -16,7 +16,7 @@
   dimensions:
     景别: 从中景快速推进到极近景
     运镜: fast push-in + hard stop
-    速度: burst → freeze
+    速度: burst to freeze
     角度: 45度俯拍
     光线: 单侧硬光 + 轮廓光
     色调: 暖调高对比
@@ -38,16 +38,15 @@
     particles <{particle_size} frame size
 
   camera_motion_template: >
-    centered medium shot → fast push-in {push_distance}% closer → extreme close-up,
-    hard stop hold {hold_duration}s
+    centered medium shot, fast push-in {push_distance}% closer, extreme close-up,
+    hard stop hold briefly
 
   video_prompt_template: >
-    [Initial: {product_name} mid-shatter, fragments at 40% trajectory, cracks visible but center intact]
-    → [fragments continue flying outward radially, decelerating over {burst_duration}s to freeze
-    at {freeze_distance} frame width]
-    → [camera fast push-in {push_distance}% closer to amplify impact, hard stop at close-up]
-    → [speed: burst to freeze]
-    → [fragments frozen in scattered positions, product center fully broken but recognizable]
+    A {product_name} on a solid {bg_color} surface, mid-shatter with fragments at 40% trajectory
+    and cracks visible but center intact, fragments continue flying outward radially decelerating to freeze at {freeze_distance} frame width, camera fast push-in
+    {push_distance}% closer amplifying impact with hard stop at close-up, single hard side-light
+    with rim highlights on fragment edges, fragments frozen in scattered positions with product
+    center fully broken but recognizable. 4K cinematic quality, smooth motion, no distortion, no jitter.
 
   # 变量说明
   variables:
@@ -73,11 +72,11 @@
       weight: 10
     - criterion: "image_prompt 是否以 no text/no watermark 结尾"
       weight: 10
-    - criterion: "motion_hint 是否包含运动方向(radial)+速度曲线(burst→freeze)+幅度(百分比)"
+    - criterion: "motion_hint 是否包含运动方向(radial)+速度曲线(burst, freeze)+幅度(百分比)"
       weight: 20
     - criterion: "camera_motion 是否包含起始构图+推进距离+终止构图+停顿状态"
       weight: 15
-    - criterion: "video_prompt 是否包含完整的5段式剧本（初始→运动→镜头→速度→结束）"
+    - criterion: "video_prompt 是否包含完整的5段式剧本（初始, 运动, 镜头, 速度, 结束）"
       weight: 15
     - criterion: "所有英文字段词数在规定范围内（image_prompt 60-100词, motion_hint 25-50词）"
       weight: 5
@@ -91,9 +90,9 @@
   适用场景: 中间帧转场，从一个卖点快速切换到下一个卖点
 
   dimensions:
-    景别: 近景 → 甩镜 → 中景
+    景别: 近景, 甩镜, 中景
     运镜: whip pan + freeze
-    速度: burst → freeze
+    速度: burst to freeze
     角度: 平视微侧
     光线: 柔光 + 边缘光
     色调: 高饱和自然色
@@ -113,15 +112,14 @@
     decelerates and locks to center frame, {secondary_action} within {freeze_distance}
 
   camera_motion_template: >
-    off-center close-up from {blur_direction} → whip pan horizontally to center →
-    centered medium shot, freeze hold {hold_duration}s
+    off-center close-up from {blur_direction}, whip pan horizontally to center, centered medium shot, freeze hold briefly
 
   video_prompt_template: >
-    [Initial: {product_name} at frame edge with motion blur, partially visible]
-    → [{product_name} slides horizontally to center at burst speed, {secondary_action}]
-    → [camera whip pan from {blur_direction} to center, hard freeze on arrival]
-    → [speed: burst to freeze, whip pan duration {burst_duration}s]
-    → [{product_name} centered and stationary, {end_state}]
+    A {product_name} on {bg_description}, arriving at frame edge with motion blur and partially
+    visible, {product_name} slides horizontally to center at burst speed {secondary_action},
+    camera whip pan from {blur_direction} to center with hard freeze on arrival, soft diffused
+    studio lighting with crisp rim light on leading edge, {product_name} centered and stationary
+    {end_state}. 4K cinematic quality, smooth motion, no distortion, no jitter.
 
   variables:
     product_name: "产品英文名称"
@@ -147,7 +145,7 @@
       weight: 10
     - criterion: "image_prompt 是否以 no text/no watermark 结尾"
       weight: 10
-    - criterion: "motion_hint 是否包含运动方向+速度曲线(burst→freeze)+定格位置"
+    - criterion: "motion_hint 是否包含运动方向+速度曲线(burst, freeze)+定格位置"
       weight: 20
     - criterion: "camera_motion 是否包含 whip pan + freeze 描述"
       weight: 15
@@ -165,13 +163,13 @@
   适用场景: 从细节急拉远展示产品全貌，揭示惊喜感
 
   dimensions:
-    景别: 极近景 → 急拉远 → 全景
+    景别: 极近景, 急拉远, 全景
     运镜: snap zoom out + hold
-    速度: burst → decelerate
+    速度: burst to decelerate
     角度: 略俯拍
     光线: 体积光 / 逆光
     色调: 高对比暖调
-    主体动作: 粉末/碎片/配料扩散 → 定格全貌
+    主体动作: 粉末/碎片/配料扩散, 定格全貌
     背景: 深色渐变背景，带光晕
 
   image_prompt_template: >
@@ -188,16 +186,16 @@
     decelerate and settle at {settle_distance}, {product_name} remains centered and intact
 
   camera_motion_template: >
-    extreme close-up on {focus_point} → snap zoom out to wide shot →
-    full product centered, hold {hold_duration}s
+    extreme close-up on {focus_point}, snap zoom out to wide shot, full product centered, hold briefly
 
   video_prompt_template: >
-    [Initial: extreme close-up on {focus_point}, {particles} beginning to expand]
-    → [{particles} burst outward radially, decelerating over {burst_duration}s,
-    {product_name} stays centered]
-    → [camera snap zoom out from macro to wide, revealing full product and surrounding particles]
-    → [speed: burst to decelerate, zoom completes in {zoom_duration}s]
-    → [{product_name} centered in wide shot, {particles} settled, full product visible and sharp]
+    A {product_name} with {texture_detail} on a solid {bg_color} surface, extreme close-up on
+    {focus_point} with {particles} beginning to expand, {particles} burst outward radially
+    decelerating while {product_name} stays centered, camera snap zoom
+    out from macro to wide revealing full product and surrounding particles in {zoom_duration}s,
+    volumetric light beams from upper left with particles catching light highlights, {product_name}
+    centered in wide shot with {particles} settled and full product visible and sharp. 4K cinematic
+    quality, smooth motion, no distortion, no jitter.
 
   variables:
     product_name: "产品英文名称"
@@ -222,11 +220,449 @@
       weight: 10
     - criterion: "image_prompt 是否以 no text/no watermark 结尾"
       weight: 10
-    - criterion: "motion_hint 是否包含运动方向(outward)+速度曲线(burst→decelerate)+定格距离"
+    - criterion: "motion_hint 是否包含运动方向(outward)+速度曲线(burst, decelerate)+定格距离"
       weight: 20
     - criterion: "camera_motion 是否包含 snap zoom out + hold 描述"
       weight: 15
     - criterion: "video_prompt 是否包含完整的5段式剧本"
       weight: 15
     - criterion: "所有英文字段词数在规定范围内"
+      weight: 5
+
+# ============================================================
+# 模板 4：品味揭示
+# ============================================================
+- id: savor_reveal
+  name: 品味揭示
+  category: 慢节奏
+  applicable_scene: 中间帧/展示帧，软糯类或液态类产品的质感展示
+
+  dimensions:
+    景别: 中近景, 缓慢推进, 近景
+    运镜: slow push-in + hold
+    速度: ease-in-out
+    角度: 平视微侧或30度俯拍
+    光线: 柔光 + 侧逆光
+    色调: 暖调低饱和
+    主体动作: 缓慢形变/酱汁缓缓流下/拉丝逐渐延展
+    背景: 纯色浅色虚化
+
+  image_prompt_template: >
+    A {product_state} with {texture_detail}, captured mid-transformation with {deformation_description}.
+    Eye-level slight three-quarter shot, about to begin slow push-in. {surface_detail}.
+    Soft diffused key light from upper right with warm side-backlight creating gentle rim
+    on {product_name} edges. Solid {bg_color} background with subtle warm gradient.
+    Product centered in lower two-thirds, {deformation_element} visible and glistening,
+    upper third reserved for motion space.
+    no text, no words, no letters, no logo, no watermark, no label
+
+  motion_hint_template: >
+    {product_name} undergoes {deformation_description} at slow ease-in-out speed, {deformation_element} gradually {deformation_end_state}, camera holds
+    on final close-up for {hold_duration}s
+
+  camera_motion_template: >
+    centered medium close-up, slow push-in {push_distance}% closer, close-up, ease-in-out, hold briefly
+
+  video_prompt_template: >
+    [Initial: {product_name} centered in medium close-up, {deformation_description} beginning,
+    surface {initial_state}], [{deformation_element} slowly {deformation_end_state} at ease-in-out speed,
+    {product_name} texture shifts and glistens], [camera slow push-in {push_distance}% closer, smooth ease-in-out deceleration to close-up], [speed: ease-in-out, push completes smoothly], [{product_name} in close-up, {deformation_element} fully {deformation_end_state},
+    texture rich and appetizing, held for {hold_duration}s]
+
+  variables:
+    product_name: "产品英文名称"
+    product_state: "产品当前状态，如：soft mochi ball / glossy chocolate lava cake"
+    texture_detail: "质感细节，如：glossy melty surface with visible stretchy strands / smooth velvety surface"
+    surface_detail: "表面细节描述"
+    deformation_description: "形变描述，如：sauce slowly flowing down / pull gradually stretching / filling oozing outward"
+    deformation_element: "形变元素，如：caramel sauce / cheese pull / chocolate ganache"
+    deformation_end_state: "形变结束状态，如：dripping off edges / stretched to 3cm / spread across surface"
+    initial_state: "初始状态，如：intact and smooth / beginning to crack"
+    bg_color: "背景颜色，如：warm cream / soft beige"
+    push_distance: "推进距离百分比，如：20"
+    duration: "持续总时间，如：1.5"
+    hold_duration: "停顿时间，如：0.5"
+
+  scoring_criteria:
+    - criterion: "image_prompt 是否包含 mid-transformation 状态描述"
+      weight: 15
+    - criterion: "image_prompt 是否包含 eye-level slight three-quarter shot 拍摄角度"
+      weight: 10
+    - criterion: "image_prompt 是否包含柔光 + 侧逆光描述"
+      weight: 10
+    - criterion: "image_prompt 是否以 no text/no watermark 结尾"
+      weight: 10
+    - criterion: "motion_hint 是否包含速度曲线(ease-in-out)+形变描述+持续时间+定格"
+      weight: 20
+    - criterion: "camera_motion 是否包含起始构图+推进距离+终止构图+停顿状态"
+      weight: 15
+    - criterion: "video_prompt 是否包含完整的5段式剧本（初始, 运动, 镜头, 速度, 结束）"
+      weight: 15
+    - criterion: "所有英文字段词数在规定范围内（image_prompt 60-100词, motion_hint 25-50词）"
+      weight: 5
+
+# ============================================================
+# 模板 5：环绕展示
+# ============================================================
+- id: orbit_showcase
+  name: 环绕展示
+  category: 慢节奏
+  applicable_scene: 中间帧/展示帧，展示产品立体感和全貌
+
+  dimensions:
+    景别: 中景, 环绕, 中景
+    运镜: orbit + hold
+    速度: constant to decelerate
+    角度: 平视或微俯拍
+    光线: 三点布光 + 轮廓光
+    色调: 自然色还原
+    主体动作: 产品静止或微小动态（如轻微震动、蒸汽袅袅）
+    背景: 纯色或渐变背景
+
+  image_prompt_template: >
+    A {product_state} with {texture_detail}, captured mid-rotation at {orbit_angle} degrees
+    around its vertical axis. Eye-level slight overhead shot. {surface_detail}.
+    Three-point lighting setup with soft key from left, fill from right, and bright rim light
+    outlining the {product_name} silhouette. Solid {bg_color} background with gentle vertical
+    gradient. Product centered, {dynamic_element} visible, {empty_space} on sides for rotation space.
+    no text, no words, no letters, no logo, no watermark, no label
+
+  motion_hint_template: >
+    Camera orbits around {product_name} at constant speed for {orbit_duration}s covering
+    {orbit_range} degrees, then decelerates and holds at {end_angle} position,
+    {dynamic_element} continues {dynamic_description}
+
+  camera_motion_template: >
+    centered medium shot at starting angle, orbit {orbit_range} degrees around product, centered medium shot at {end_angle}, decelerate hold briefly
+
+  video_prompt_template: >
+    [Initial: {product_name} centered in medium shot at front-facing angle,
+    {dynamic_element} {dynamic_description}], [camera orbits {orbit_range} degrees around product at constant speed,
+    {dynamic_element} continues {dynamic_description}], [camera decelerates and holds at {end_angle} position, medium shot], [speed: constant to decelerate, orbit completes smoothly], [{product_name} centered at {end_angle} angle, full three-dimensional form visible,
+    {dynamic_element} still {dynamic_description}, held for {hold_duration}s]
+
+  variables:
+    product_name: "产品英文名称"
+    product_state: "产品当前状态，如：round frosted cake / stacked burger / tall parfait glass"
+    texture_detail: "质感细节，如：layers visible from the side / glossy coating catching light"
+    surface_detail: "表面细节描述"
+    orbit_angle: "环绕角度起始位置，如：0 / 45"
+    orbit_range: "环绕角度范围，如：180 / 360"
+    orbit_duration: "环绕持续时间，如：2.0"
+    end_angle: "结束角度位置，如：180 / 360"
+    dynamic_element: "动态元素，如：steam / condensation / subtle vibration"
+    dynamic_description: "动态描述，如：rising gently / forming on surface"
+    bg_color: "背景颜色，如：soft grey / warm ivory"
+    empty_space: "留白位置，如：left and right thirds"
+    hold_duration: "停顿时间，如：0.5"
+
+  scoring_criteria:
+    - criterion: "image_prompt 是否包含 mid-rotation 状态描述"
+      weight: 15
+    - criterion: "image_prompt 是否包含 eye-level slight overhead shot 拍摄角度"
+      weight: 10
+    - criterion: "image_prompt 是否包含三点布光 + 轮廓光描述"
+      weight: 10
+    - criterion: "image_prompt 是否以 no text/no watermark 结尾"
+      weight: 10
+    - criterion: "motion_hint 是否包含环绕角度+速度曲线(constant, decelerate)+定格位置"
+      weight: 20
+    - criterion: "camera_motion 是否包含 orbit + decelerate hold 描述"
+      weight: 15
+    - criterion: "video_prompt 是否包含完整的5段式剧本（初始, 运动, 镜头, 速度, 结束）"
+      weight: 15
+    - criterion: "所有英文字段词数在规定范围内（image_prompt 60-100词, motion_hint 25-50词）"
+      weight: 5
+
+# ============================================================
+# 模板 6：微距焦点变换
+# ============================================================
+- id: macro_focus_shift
+  name: 微距焦点变换
+  category: 慢节奏
+  applicable_scene: 中间帧，从一个细节转移到另一个细节，展示多层次产品
+
+  dimensions:
+    景别: 极近景（微距）, 焦点变换, 极近景（微距）
+    运镜: macro rack focus
+    速度: decelerate
+    角度: 微距视角
+    光线: 聚焦硬光 + 环境补光
+    色调: 高饱和自然色
+    主体动作: 焦点变化中产品轻微移动或有配料进入
+    背景: 极浅景深虚化背景
+
+  image_prompt_template: >
+    A {product_state} with {texture_detail}, captured at macro scale with focus on {focus_near}.
+    {focus_far} visible in soft bokeh background. Macro three-quarter shot.
+    {surface_detail}. Focused hard light on {focus_near} creating sharp detail contrast
+    against blurred surroundings, soft ambient fill light. Solid {bg_color} background
+    with heavy bokeh. Product centered, {focus_near} sharp in lower frame, {focus_far}
+    blurred in upper frame, {empty_space} for rack focus transition.
+    no text, no words, no letters, no logo, no watermark, no label
+
+  motion_hint_template: >
+    Focus racks from {focus_near} to {focus_far} at decelerating speed,
+    {secondary_motion} occurs during transition, depth of field shifts {dof_description}
+
+  camera_motion_template: >
+    macro close-up focused on {focus_near}, rack focus to {focus_far}, macro close-up focused on {focus_far}, decelerate, hold briefly
+
+  video_prompt_template: >
+    [Initial: extreme macro close-up, focus locked on {focus_near}, {focus_far} in soft bokeh,
+    {initial_state}], [focus racks from {focus_near} to {focus_far} at decelerating speed,
+    depth of field shifts, {secondary_motion}], [camera holds macro close-up, focus now on {focus_far}, {focus_near} now in soft bokeh], [speed: decelerate, rack focus completes smoothly], [{focus_far} sharp in macro detail, {focus_near} blurred in background,
+    held for {hold_duration}s]
+
+  variables:
+    product_name: "产品英文名称"
+    product_state: "产品当前状态，如：layered cream cake / cross-sectioned sandwich cookie"
+    texture_detail: "质感细节，如：visible cream layers and crumb texture / glossy filling between layers"
+    surface_detail: "表面细节描述"
+    focus_near: "近处焦点，如：top layer of chocolate / outer crispy edge"
+    focus_far: "远处焦点，如：inner cream filling / bottom crumb layer"
+    bg_color: "背景颜色，如：warm brown / soft dark green"
+    duration: "焦点变换持续时间，如：1.2"
+    hold_duration: "停顿时间，如：0.4"
+    secondary_motion: "次要动作，如：sauce slowly seeping / crumbs settling / filling oozing slightly"
+    initial_state: "初始状态描述"
+    dof_description: "景深变化描述，如：from 2mm to 8mm / from shallow to slightly wider"
+    empty_space: "留白位置，如：center band for focus transition"
+
+  scoring_criteria:
+    - criterion: "image_prompt 是否包含 macro scale + 焦点描述"
+      weight: 15
+    - criterion: "image_prompt 是否包含 macro three-quarter shot 拍摄角度"
+      weight: 10
+    - criterion: "image_prompt 是否包含聚焦硬光 + 环境补光描述"
+      weight: 10
+    - criterion: "image_prompt 是否以 no text/no watermark 结尾"
+      weight: 10
+    - criterion: "motion_hint 是否包含焦点变换+速度曲线(decelerate)+景深描述"
+      weight: 20
+    - criterion: "camera_motion 是否包含 rack focus + decelerate hold 描述"
+      weight: 15
+    - criterion: "video_prompt 是否包含完整的5段式剧本（初始, 运动, 镜头, 速度, 结束）"
+      weight: 15
+    - criterion: "所有英文字段词数在规定范围内（image_prompt 60-100词, motion_hint 25-50词）"
+      weight: 5
+
+# ============================================================
+# 模板 7：滑动变焦冲击
+# ============================================================
+- id: dolly_zoom_impact
+  name: 滑动变焦冲击
+  category: 创意类
+  applicable_scene: 开场帧或高冲击中间帧，适合包装类产品或有强烈品牌感的产品
+
+  dimensions:
+    景别: 中景, 滑动变焦, 中景（透视变化）
+    运镜: dolly zoom (Vertigo effect)
+    速度: ease-in to hard stop
+    角度: 正面平视
+    光线: 正面柔光 + 背景轮廓光
+    色调: 高对比饱和色
+    主体动作: 产品静止，背景透视剧烈变化
+    背景: 有纵深感的背景（走廊/放射线/虚化场景）
+
+  image_prompt_template: >
+    A {product_state} with {texture_detail}, centered and stationary, captured at the start
+    of a dolly zoom effect. Front-facing eye-level shot. {surface_detail}.
+    Soft frontal key light with bright background rim light creating {product_name}
+    silhouette pop. {bg_description} with depth perspective leading to product center.
+    Product centered, {bg_depth_element} visible behind creating perspective tunnel,
+    {empty_space} framing the product on all sides.
+    no text, no words, no letters, no logo, no watermark, no label
+
+  motion_hint_template: >
+    Camera dollies in while zooming out, creating Vertigo effect at
+    ease-in speed, then hard stop at {final_focal_length}, {product_name} remains centered
+    and stationary while background perspective distorts dramatically
+
+  camera_motion_template: >
+    front-facing medium shot at {start_focal_length}, dolly in {dolly_distance} while
+    zooming out to {final_focal_length}, hard stop, hold briefly
+
+  video_prompt_template: >
+    [Initial: {product_name} centered in medium shot, background perspective normal at {start_focal_length},
+    product stationary], [camera dollies in while zooming out simultaneously, background perspective warps and
+    distorts, {product_name} stays centered and sharp], [hard stop at {final_focal_length}, background perspective now dramatically compressed/stretched], [speed: ease-in to hard stop, dolly zoom completes smoothly], [{product_name} centered and stationary, background perspective at maximum distortion,
+    {product_name} appears visually larger/more dominant, held for {hold_duration}s]
+
+  variables:
+    product_name: "产品英文名称"
+    product_state: "产品当前状态，如：bagged snack package / bottled beverage / boxed confection"
+    texture_detail: "质感细节，如：glossy packaging with embossed logo / matte finish with metallic accents"
+    surface_detail: "表面细节描述"
+    bg_description: "背景描述，如：dark corridor with converging lines / radial light beams / geometric pattern tunnel"
+    bg_depth_element: "背景纵深元素，如：converging walls / radiating light rays / receding geometric shapes"
+    start_focal_length: "起始焦距，如：50mm / 35mm"
+    final_focal_length: "结束焦距，如：85mm / 120mm"
+    dolly_distance: "滑动距离，如：forward 0.5m / forward 1m"
+    duration: "持续总时间，如：1.0"
+    hold_duration: "停顿时间，如：0.3"
+    empty_space: "留白区域，如：even margins around product"
+
+  scoring_criteria:
+    - criterion: "image_prompt 是否包含 centered and stationary + dolly zoom起始状态"
+      weight: 15
+    - criterion: "image_prompt 是否包含 front-facing eye-level shot 拍摄角度"
+      weight: 10
+    - criterion: "image_prompt 是否包含正面柔光 + 背景轮廓光描述"
+      weight: 10
+    - criterion: "image_prompt 是否以 no text/no watermark 结尾"
+      weight: 10
+    - criterion: "motion_hint 是否包含 Vertigo effect + 速度曲线(ease-in, hard stop) + 背景透视变化"
+      weight: 20
+    - criterion: "camera_motion 是否包含 dolly in + zoom out + hard stop hold 描述"
+      weight: 15
+    - criterion: "video_prompt 是否包含完整的5段式剧本（初始, 运动, 镜头, 速度, 结束）"
+      weight: 15
+    - criterion: "所有英文字段词数在规定范围内（image_prompt 60-100词, motion_hint 25-50词）"
+      weight: 5
+
+# ============================================================
+# 模板 8：俯拍旋转
+# ============================================================
+- id: overhead_spin
+  name: 俯拍旋转
+  category: 创意类
+  applicable_scene: 展示帧或结尾帧，适合扁平产品（饼干、巧克力板、切片产品）
+
+  dimensions:
+    景别: 全景（俯拍）, 旋转, 全景（俯拍）
+    运镜: overhead rotation + hold
+    速度: constant to decelerate
+    角度: 正俯拍90度
+    光线: 顶部柔光 + 侧补光
+    色调: 明亮高饱和
+    主体动作: 产品静止，镜头旋转展示
+    背景: 纯色或纹理背景（桌面/木板/大理石）
+
+  image_prompt_template: >
+    A {product_state} with {texture_detail}, captured from directly above at 90-degree overhead
+    angle, mid-rotation. {surface_detail}. Top soft diffused light with gentle side fill
+    creating even illumination across {product_name} surface. {bg_texture} background filling
+    the entire frame. Product centered, {arrangement_description}, {empty_space} around product
+    for rotation sweep.
+    no text, no words, no letters, no logo, no watermark, no label
+
+  motion_hint_template: >
+    Camera rotates clockwise/counterclockwise overhead at constant speed for {duration}s
+    covering {rotation_range} degrees, then decelerates and holds at {end_rotation} degrees,
+    {product_name} remains stationary and centered throughout
+
+  camera_motion_template: >
+    centered overhead full shot at starting angle, rotate {rotation_range} degrees overhead, centered overhead full shot at {end_rotation}, decelerate, hold briefly
+
+  video_prompt_template: >
+    [Initial: {product_name} centered in overhead full shot, flat layout visible,
+    background {bg_texture} at starting orientation], [camera rotates {rotation_range} degrees overhead at constant speed,
+    {product_name} stationary, background texture sweeps beneath], [camera decelerates and holds at {end_rotation} degrees, overhead full shot], [speed: constant to decelerate, rotation completes smoothly], [{product_name} centered and stationary at {end_rotation} degrees, full flat form
+    visible, {arrangement_description}, held for {hold_duration}s]
+
+  variables:
+    product_name: "产品英文名称"
+    product_state: "产品当前状态，如：round chocolate bar / square cookie assortment / sliced fruit arrangement"
+    texture_detail: "质感细节，如：glossy tempered surface with visible swirls / embossed pattern on biscuit top"
+    surface_detail: "表面细节描述"
+    bg_texture: "背景纹理，如：rustic wooden board / white marble with veins / slate gray surface"
+    arrangement_description: "排列描述，如：single product centered / 4-piece radial arrangement / scattered with crumbs"
+    rotation_range: "旋转角度范围，如：180 / 360"
+    end_rotation: "结束角度，如：180 / 360"
+    duration: "旋转持续时间，如：2.0"
+    hold_duration: "停顿时间，如：0.5"
+    empty_space: "留白区域，如：outer 30% margin"
+
+  scoring_criteria:
+    - criterion: "image_prompt 是否包含 90-degree overhead angle 拍摄角度"
+      weight: 15
+    - criterion: "image_prompt 是否包含 top soft diffused light + side fill 光线描述"
+      weight: 10
+    - criterion: "image_prompt 是否包含背景纹理描述"
+      weight: 10
+    - criterion: "image_prompt 是否以 no text/no watermark 结尾"
+      weight: 10
+    - criterion: "motion_hint 是否包含旋转方向+角度+速度曲线(constant, decelerate)+定格"
+      weight: 20
+    - criterion: "camera_motion 是否包含 overhead rotation + decelerate hold 描述"
+      weight: 15
+    - criterion: "video_prompt 是否包含完整的5段式剧本（初始, 运动, 镜头, 速度, 结束）"
+      weight: 15
+    - criterion: "所有英文字段词数在规定范围内（image_prompt 60-100词, motion_hint 25-50词）"
+      weight: 5
+
+# ============================================================
+# 模板 9：移轴微缩
+# ============================================================
+- id: tilt_shift_miniature
+  name: 移轴微缩
+  category: 创意类
+  applicable_scene: 展示帧或创意转场帧，适合创意风格、节日氛围类产品
+
+  dimensions:
+    景别: 中景（高角度俯拍）, 缓慢平移, 中景
+    运镜: tilt-shift + slow pan
+    速度: constant
+    角度: 高角度俯拍（45-60度）
+    光线: 明亮自然光 + 暖色补光
+    色调: 高饱和暖调（微缩景观感）
+    主体动作: 产品在微缩景观感中展示，可能有配料小人国式飞入
+    背景: 微缩景观背景（迷你场景/模型感）
+
+  image_prompt_template: >
+    A {product_state} with {texture_detail}, captured at 45-60 degree elevated angle with
+    tilt-shift miniature effect — sharp focus band on {product_name} with strong selective
+    blur above and below. {surface_detail}. Bright natural daylight with warm fill light
+    creating miniature diorama feel. {miniature_bg} surrounding the product, {props_description}.
+    Product centered in sharp focus band, {miniature_element} in blurred foreground/background,
+    {empty_space} at frame edges.
+    no text, no words, no letters, no logo, no watermark, no label
+
+  motion_hint_template: >
+    Camera slow pans horizontally at constant speed covering {pan_distance},
+    tilt-shift effect maintained throughout, {secondary_motion} during pan,
+    {product_name} stays in sharp focus band
+
+  camera_motion_template: >
+    elevated medium shot with tilt-shift, {pan_direction}, slow horizontal pan {pan_distance}, elevated medium shot at new position, constant speed, hold briefly
+
+  video_prompt_template: >
+    [Initial: {product_name} centered in tilt-shift medium shot, miniature landscape visible,
+    sharp focus band on product, {initial_state}], [camera slow pans {pan_direction} at constant speed, tilt-shift maintained,
+    {secondary_motion}], [camera reaches new position, tilt-shift still active, {product_name} in sharp band], [speed: constant, pan completes smoothly], [{product_name} in tilt-shift medium shot at new position, miniature diorama feel intact,
+    {miniature_element} settled, held for {hold_duration}s]
+
+  variables:
+    product_name: "产品英文名称"
+    product_state: "产品当前状态，如：festive Christmas cookie / Valentine chocolate assortment / birthday cake slice"
+    texture_detail: "质感细节，如：colorful icing decorations / powdered sugar dusting / glossy ganache top"
+    surface_detail: "表面细节描述"
+    miniature_bg: "微缩背景描述，如：miniature winter village scene / tiny flower garden / small carnival setup"
+    props_description: "道具描述，如：miniature trees and figurines / tiny fence and stone path"
+    miniature_element: "微缩元素，如：mini figurines / tiny trees / small props"
+    pan_direction: "平移方向，如：left to right / right to left"
+    pan_distance: "平移距离，如：30% frame width / 0.3m"
+    duration: "平移持续时间，如：2.5"
+    hold_duration: "停顿时间，如：0.5"
+    initial_state: "初始状态描述"
+    secondary_motion: "次要动作，如：miniature snowflakes falling / tiny confetti drifting / sugar crystals catching light"
+    empty_space: "留白区域，如：top and bottom thirds blurred"
+
+  scoring_criteria:
+    - criterion: "image_prompt 是否包含 45-60 degree elevated angle + tilt-shift 效果描述"
+      weight: 15
+    - criterion: "image_prompt 是否包含 sharp focus band + selective blur 描述"
+      weight: 10
+    - criterion: "image_prompt 是否包含明亮自然光 + 暖色补光描述"
+      weight: 10
+    - criterion: "image_prompt 是否以 no text/no watermark 结尾"
+      weight: 10
+    - criterion: "motion_hint 是否包含平移方向+速度曲线(constant)+tilt-shift维持+焦点带描述"
+      weight: 20
+    - criterion: "camera_motion 是否包含 elevated shot + tilt-shift + slow pan + hold 描述"
+      weight: 15
+    - criterion: "video_prompt 是否包含完整的5段式剧本（初始, 运动, 镜头, 速度, 结束）"
+      weight: 15
+    - criterion: "所有英文字段词数在规定范围内（image_prompt 60-100词, motion_hint 25-50词）"
       weight: 5

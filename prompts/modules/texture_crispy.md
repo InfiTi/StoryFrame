@@ -52,6 +52,20 @@
 | 轮廓光 | rim light / backlight outlining edges | 突出碎裂边缘 |
 | 金色光 | warm golden hour lighting | 温暖、食欲感 |
 
+### 微动态词汇表（酥脆类）
+| 微动态类型 | ✅ 描述术语 | 适用场景 |
+|-----------|-----------|----------|
+| 粉末飘散 | fine sugar crystals floating, powder dust suspended mid-air | 碎裂瞬间伴随的粉末飞散 |
+| 裂纹扩展 | hairline cracks extending from impact point, fracture lines visible | 推近特写裂纹扩展瞬间 |
+| 碎屑微颤 | tiny crumbs vibrating on impact surface, micro-bounce of fragments | 碎裂后碎片轻微回弹 |
+| 光泽闪烁 | golden fragments catching light sparkle, crystalline sugar glinting | 碎片飞行中的光泽变化 |
+
+### 情绪氛围词汇表（酥脆类）
+| 情绪类型 | 描述术语 | 适用场景 |
+|---------|---------|----------|
+| 冲击震荡 | impact shockwave rippling outward, freeze-frame energy | 碎裂爆点帧 |
+| 温暖食欲 | warm appetite-inducing glow radiating, golden warmth spreading | 展示酥脆色泽 |
+
 ## few-shot 质量参考示例（酥脆类）
 
 **[原创] 酥脆威化碎裂**

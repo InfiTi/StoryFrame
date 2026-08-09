@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame,
     QScrollArea, QSizePolicy, QDialog, QDoubleSpinBox, QPushButton,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QEvent
 from PySide6.QtGui import QPixmap
 from pathlib import Path
 import json
@@ -56,7 +56,24 @@ class ImagePreviewDialog(QDialog):
         label.setStyleSheet("background: #11111b;")
         layout.addWidget(label)
 
+        hint = QLabel("点击任意处关闭")
+        hint.setAlignment(Qt.AlignCenter)
+        hint.setStyleSheet("color: #585b70; font-size: 11px; padding: 4px;")
+        layout.addWidget(hint)
+
         self.setStyleSheet("QDialog { background: #11111b; }")
+        self._image_label = label
+        # 窗口内任意位置（图片、空白、提示文字）点击都关闭
+        self.installEventFilter(self)
+        label.installEventFilter(self)
+        hint.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        """点击窗口内任意处关闭预览"""
+        if event.type() == QEvent.MouseButtonPress:
+            self.close()
+            return True
+        return super().eventFilter(obj, event)
 
 
 class FrameCard(QFrame):
@@ -66,6 +83,7 @@ class FrameCard(QFrame):
     image_clicked = Signal(str) # 图片点击（传路径）
     duration_changed = Signal(int, float)  # 帧时长修改（帧索引, 新时长）
     regenerate_clicked = Signal(int)  # 重新生成此帧（帧索引）
+    sketch_clicked = Signal(int, str)  # 生成/更新运动示意图（帧索引, 模式: ""/ai/hybrid）
 
     def __init__(self, frame_data: dict, index: int, font_size: int = 15):
         super().__init__()
@@ -74,6 +92,7 @@ class FrameCard(QFrame):
         self.font_size = font_size
         self.selected = False
         self._init_ui()
+        self.update_sketch(self.frame_data.get("motion_sketch_path", ""))
         self._update_style()
 
     def _init_ui(self):
@@ -122,7 +141,26 @@ class FrameCard(QFrame):
             self.image_label.setToolTip("无图片")
 
         self.image_label.mousePressEvent = self._on_image_click
-        layout.addWidget(self.image_label, alignment=Qt.AlignTop)
+
+        # 缩略图列：产品图 + 运动示意图
+        thumb_col = QVBoxLayout()
+        thumb_col.setSpacing(6)
+        thumb_col.addWidget(self.image_label, alignment=Qt.AlignTop)
+
+        # 运动示意图缩略图（黑白线稿+箭头，喂给视频模型）
+        self.sketch_label = QLabel()
+        self.sketch_label.setFixedWidth(thumb_w)
+        self.sketch_label.setMinimumHeight(thumb_w // 2)
+        self.sketch_label.setAlignment(Qt.AlignCenter)
+        self.sketch_label.setCursor(Qt.PointingHandCursor)
+        self.sketch_label.setStyleSheet(
+            f"background: #11111b; border-radius: 6px; color: #585b70; font-size: {fs}px;"
+        )
+        self.sketch_label.setText("✏️")
+        self.sketch_label.mousePressEvent = self._on_sketch_click
+        thumb_col.addWidget(self.sketch_label, alignment=Qt.AlignTop)
+
+        layout.addLayout(thumb_col)
 
         # 右侧：所有提示词
         content = QVBoxLayout()
@@ -164,6 +202,26 @@ class FrameCard(QFrame):
         )
         self.regen_btn.clicked.connect(lambda: self.regenerate_clicked.emit(self.index))
         dur_row.addWidget(self.regen_btn)
+
+        # 运动示意图按钮：✏️按设置 / 🎨AI 生成 / 🧬混合精修
+        self.sketch_btns = {}
+        for emoji, mode, tip in (
+            ("✏️", "", "运动示意图（按设置中的生成方式）"),
+            ("🎨", "ai", "AI 生成草稿图（调用生图模型接口）"),
+            ("🧬", "hybrid", "混合精修草稿图（本地底稿 + 生图模型精修）"),
+        ):
+            btn = QPushButton(emoji)
+            btn.setFixedSize(fs + 6, fs + 6)
+            btn.setToolTip(tip)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(
+                f"QPushButton {{ border: none; background: transparent; font-size: {fs}px; "
+                f"padding: 0px; }}"
+                f"QPushButton:hover {{ background: #313244; border-radius: 4px; }}"
+            )
+            btn.clicked.connect(lambda checked=False, m=mode: self.sketch_clicked.emit(self.index, m))
+            dur_row.addWidget(btn)
+            self.sketch_btns[mode] = btn
 
         content.addLayout(dur_row)
 
@@ -302,6 +360,27 @@ class FrameCard(QFrame):
             self.image_label.setStyleSheet("background: transparent; border-radius: 6px;")
             self.image_label.setToolTip("点击放大")
 
+    def update_sketch(self, image_path: str):
+        """更新运动示意图缩略图"""
+        self.frame_data["motion_sketch_path"] = image_path
+        if image_path and Path(image_path).exists():
+            pix = QPixmap(image_path)
+            if not pix.isNull():
+                scaled = pix.scaledToWidth(self.thumb_w, Qt.SmoothTransformation)
+                self.sketch_label.setPixmap(scaled)
+                self.sketch_label.setFixedHeight(scaled.height())
+                self.sketch_label.setStyleSheet("background: transparent; border-radius: 6px;")
+                self.sketch_label.setToolTip("运动示意图（点击放大）")
+                return
+        self.sketch_label.setPixmap(QPixmap())
+        self.sketch_label.setText("✏️")
+        self.sketch_label.setFixedHeight(self.thumb_w // 2)
+        self.sketch_label.setStyleSheet(
+            f"background: #11111b; border-radius: 6px; color: #585b70; "
+            f"font-size: {self.font_size}px;"
+        )
+        self.sketch_label.setToolTip("生成/更新运动示意图")
+
     def _on_duration_spin_changed(self, value: float):
         """帧时长被修改"""
         self.frame_data["duration"] = round(value, 1)
@@ -312,6 +391,12 @@ class FrameCard(QFrame):
         img_path = self.frame_data.get("image_path")
         if img_path and Path(img_path).exists():
             self.image_clicked.emit(img_path)
+
+    def _on_sketch_click(self, event):
+        """点击运动示意图放大"""
+        path = self.frame_data.get("motion_sketch_path", "")
+        if path and Path(path).exists():
+            self.image_clicked.emit(path)
 
     def mousePressEvent(self, event):
         """点击卡片选中"""
@@ -329,6 +414,7 @@ class StoryboardView(QWidget):
     frame_selected = Signal(int)  # 选中帧变化
     frame_duration_changed = Signal(int, float)  # 帧时长修改（帧索引, 新时长）
     frame_regenerate = Signal(int)  # 重新生成帧（帧索引）
+    sketch_requested = Signal(int, str)  # 生成运动示意图（帧索引, 模式: ""/ai/hybrid）
 
     def __init__(self):
         super().__init__()
@@ -407,6 +493,7 @@ class StoryboardView(QWidget):
             card.image_clicked.connect(self._on_image_clicked)
             card.duration_changed.connect(self._on_duration_changed)
             card.regenerate_clicked.connect(self.frame_regenerate)
+            card.sketch_clicked.connect(self.sketch_requested)
             self.container_layout.addWidget(card)
             self.cards.append(card)
 
@@ -436,6 +523,7 @@ class StoryboardView(QWidget):
             card.image_clicked.connect(self._on_image_clicked)
             card.duration_changed.connect(self._on_duration_changed)
             card.regenerate_clicked.connect(self.frame_regenerate)
+            card.sketch_clicked.connect(self.sketch_requested)
             self.container_layout.addWidget(card)
             self.cards.append(card)
         else:
@@ -446,6 +534,7 @@ class StoryboardView(QWidget):
             card.image_clicked.connect(self._on_image_clicked)
             card.duration_changed.connect(self._on_duration_changed)
             card.regenerate_clicked.connect(self.frame_regenerate)
+            card.sketch_clicked.connect(self.sketch_requested)
             self.container_layout.insertWidget(index, card)
             self.cards.insert(index, card)
             # 后续卡片索引 +1
@@ -526,6 +615,18 @@ class StoryboardView(QWidget):
         if 0 <= index < len(self.cards):
             self.frames[index]["image_path"] = image_path
             self.cards[index].update_image(image_path)
+
+    def update_frame_sketch(self, index: int, image_path: str):
+        """更新某帧的运动示意图"""
+        if 0 <= index < len(self.cards):
+            self.frames[index]["motion_sketch_path"] = image_path
+            self.cards[index].update_sketch(image_path)
+
+    def set_sketch_buttons_enabled(self, enabled: bool):
+        """启用/禁用所有卡片上的运动示意图按钮（生成中防重复点击）"""
+        for card in self.cards:
+            for btn in card.sketch_btns.values():
+                btn.setEnabled(enabled)
 
     def update_frame_data(self, index: int, frame_data: dict):
         """更新某帧的完整数据（重新生成后调用），重建该卡片"""
