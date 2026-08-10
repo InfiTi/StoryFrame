@@ -708,7 +708,12 @@ def _load_few_shot(product_texture: str = "", max_items: int = 3) -> str:
     if not items:
         return ""
 
-    lines = ["\n---\n\n## 参考示例（Few-Shot）\n", "以下是一些高质量的产品描述提示词示例，请参考其描述风格、词汇选择和结构组织：\n"]
+    lines = [
+        "\n---\n\n## 参考示例（Few-Shot）\n",
+        "以下是一些高质量的产品描述提示词示例，仅供词汇选择和描述风格参考。\n",
+        "⚠️ 注意：这些示例的输出格式各不相同（有的是 JSON、有的是纯文本），**不要模仿其格式**。\n",
+        "你必须严格遵循上述 H3 规范的输出字段和 JSON 数组格式。\n",
+    ]
     for i, item in enumerate(items, 1):
         title = item.get("title", "示例 " + str(i))
         ct = item.get("content", "")
