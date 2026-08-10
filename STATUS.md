@@ -1,13 +1,13 @@
 # StoryFrame 项目状态
 
-> 最后更新: 2026-08-10 | 版本 v0.11.0
+> 最后更新: 2026-08-10 | 版本 v0.12.0
 
 ## 概述
 分镜图生成器 — 商品信息 → 分镜脚本 → 图片/视频提示词，PySide6 桌面应用。统一生成接口支持多 provider 切换。
 
 ## 当前状态
-- **版本**: v0.10.0
-- **阶段**: 商业镜头预设库驱动架构（预设锁定运镜/角度/光线/速度/过渡，LLM 只填产品信息）
+- **版本**: v0.12.0
+- **阶段**: 双模式分镜生成（标准模式：预设驱动 + H3 模式：叙事驱动的 MiniMax H3 规范）
 
 ## 已完成
 - [x] 分镜脚本生成（LLM + JSON 流式解析）
@@ -65,18 +65,19 @@
 - [x] **图生视频优先用示意图** — 有示意图公网 URL 时直接作为视频输入
 - [x] **视频 provider 切换** — agnes（API 直出）/ doubao（手动复制）/ comfyui（预留）
 - [x] **修复 AgnesImageClient response_format 位置 bug** — 按文档移入 extra_body
+- [x] **H3 模式实施（v0.12.0）** — 叙事驱动的 MiniMax H3 规范分镜生成，与标准模式并存
+  - [x] Step 1: StoryboardFrame 新增 H3 字段（shot_label/cut_timestamp/integrated_multimodal_description/overall_soundscape/non_diegetic_music）
+  - [x] Step 2: prompt_loader H3 生成函数（_load_few_shot + get_h3_system_prompt/user_prompt/plan_prompt/frame_prompt/copy_prompt）
+  - [x] Step 3: storyboard.py 新增 generate_storyboard_h3()（plan→frame→audio 三阶段，cut_timestamp 代码累计计算）
+  - [x] Step 4: UI 工具栏模式切换下拉框（标准/H3），Worker 按 mode 分流
+  - [x] Step 5: FrameCard H3 字段展示（shot_label/cut_timestamp 标签 + 多模态描述 + 全片音频区域，空字段不显示）
+  - [x] Step 6: few-shot 示例注入（按质感从 few_shot_extracted.json 读取 3 条，附格式警告）
+  - [x] Step 7: 集成测试 + 文档更新（标准模式回归验证通过）
 
 ## 进行中
-- [ ] **H3 模式实施**（详见 `docs/h3-mode-design.md`）
-  - [ ] Step 1: StoryboardFrame 数据结构扩展
-  - [ ] Step 2: prompt_loader H3 生成函数
-  - [ ] Step 3: storyboard.py H3 生成逻辑
-  - [ ] Step 4: UI 模式切换
-  - [ ] Step 5: UI 帧卡片 H3 字段展示
-  - [ ] Step 6: few-shot 示例注入
-  - [ ] Step 7: 集成测试 + 文档更新
 - [ ] 评分系统 UI 集成（生成后自动评分+修正建议展示）
 - [ ] V2 两步生成实测验证（预设驱动 vs 旧 LLM 自由设计）
+- [ ] H3 模式端到端实测（需 LLM API 调用，验证生成质量）
 
 ## 待办
 - [ ] 口味标签/负向词的端到端验证
@@ -109,9 +110,20 @@
 | prompts/doubao_video_prompt.md | 豆包视频提示词模板（自然语言格式） |
 | docs/video_model_prompt_research.md | 视频模型 prompt 最佳实践调研报告 |
 | ui/main_window.py | 主窗口界面 |
-| docs/h3-mode-design.md | H3 模式设计文档（必读） |
+| docs/h3-mode-design.md | H3 模式设计文档（已实施） |
+| prompts/h3_system_prompt.md | H3 模式系统提示词（含 H3 规范 + few-shot 注入） |
+| prompts/few_shot_extracted.json | 按质感分类的 few-shot 示例（4 类各 8 条） |
 
 ## 最近变更
+
+### v0.12.0 (2026-08-10) — H3 模式实施（叙事驱动的 MiniMax H3 规范）
+- **双模式并存**: 标准模式（预设驱动）+ H3 模式（叙事驱动），UI 工具栏可切换，默认标准模式
+- **StoryboardFrame 扩展**: 新增 shot_label / cut_timestamp / integrated_multimodal_description / _cn / overall_soundscape / non_diegetic_music（标准模式下为空，不影响现有流程）
+- **prompt_loader H3 函数**: get_h3_system_prompt（含 few-shot 注入）/ get_h3_user_prompt / get_h3_plan_prompt / get_h3_frame_prompt / get_h3_copy_prompt
+- **generate_storyboard_h3()**: plan（叙事弧）→ frame（叙事优先，先写 integrated_multimodal_description 再派生其他字段）→ audio（全片音频）三阶段；cut_timestamp 由代码按 duration 累计计算
+- **UI 展示**: FrameCard 新增 H3 字段展示（紫色标签 + 多模态描述 + 全片音频区域），空字段自动不显示
+- **few-shot 注入**: 从 few_shot_extracted.json 按质感读取 3 条示例注入 system prompt，附格式警告（不模仿示例格式）
+- **标准模式回归验证**: get_system_prompt 不注入 few-shot，generate_storyboard_v2 逻辑不变
 
 ### v0.11.0 (2026-08-08) — 运动示意图（分镜蓝图）
 - 新增 `core/motion_sketch.py`：从分镜字段启发式提取主体/方向/速度/粒子/镜头 → 生成黑白线稿运动蓝图
