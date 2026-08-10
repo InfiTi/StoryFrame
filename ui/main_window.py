@@ -19,7 +19,7 @@ from config import load_config, save_config, OUTPUT_DIR, get_llm_config
 from core.templates import TEMPLATES, get_template_by_name
 from core.llm_client import LLMClient
 from core.generation_manager import GenerationManager
-from core.storyboard import generate_storyboard, generate_storyboard_v2, regenerate_frame, Storyboard, StoryboardFrame
+from core.storyboard import generate_storyboard, generate_storyboard_v2, generate_storyboard_h3, regenerate_frame, Storyboard, StoryboardFrame
 from core.product_parser import parse_product_markdown, scan_product_directory, ProductInfo, update_product_markdown
 from core.script_cache import save_cache, list_cache, load_cache, cleanup_cache
 from core.exporter import export_json, export_markdown, export_package
@@ -39,7 +39,7 @@ class GenerateScriptWorker(QObject):
 
     def __init__(self, llm_config, product_name, product_desc,
                  selling_points, template, frame_count, total_duration,
-                 product_info=None, direction="", use_v2=True):
+                 product_info=None, direction="", use_v2=True, mode="standard"):
         super().__init__()
         self.llm_config = llm_config
         self.product_name = product_name
@@ -51,6 +51,7 @@ class GenerateScriptWorker(QObject):
         self.product_info = product_info
         self.direction = direction
         self.use_v2 = use_v2
+        self.mode = mode
 
     def run(self):
         try:
@@ -63,7 +64,38 @@ class GenerateScriptWorker(QObject):
             def on_chunk(text):
                 self.chunk.emit(text)
 
-            if self.use_v2:
+            if self.mode == "h3":
+                # H3 模式：叙事优先的两步生成
+                self.stage.emit("plan")
+
+                def on_plan_chunk(text):
+                    self.chunk.emit(text)
+
+                def on_stage_local(stage):
+                    self.stage.emit(stage)
+
+                def on_frame_chunk_local(text):
+                    self.chunk.emit(text)
+
+                def on_frame_done(frame_num, frame):
+                    self.frame_done.emit(frame_num, frame)
+
+                sb = generate_storyboard_h3(
+                    llm=llm,
+                    product_name=self.product_name,
+                    product_desc=self.product_desc,
+                    selling_points=self.selling_points,
+                    template=self.template,
+                    frame_count=self.frame_count,
+                    total_duration=self.total_duration,
+                    product_info=self.product_info,
+                    direction=self.direction,
+                    on_plan_chunk=on_plan_chunk,
+                    on_frame_chunk=on_frame_chunk_local,
+                    on_frame_done=on_frame_done,
+                    on_stage=on_stage_local,
+                )
+            elif self.use_v2:
                 # 两步生成
                 self.stage.emit("plan")
 
@@ -291,6 +323,19 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.cache_load_btn)
 
         toolbar.addStretch()
+
+        # 生成模式切换（标准 / H3）
+        mode_label = QLabel("🎬 模式：")
+        mode_label.setStyleSheet("color: #565f89; font-size: 12px;")
+        toolbar.addWidget(mode_label)
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItem("标准模式", "standard")
+        self.mode_combo.addItem("H3 模式", "h3")
+        self.mode_combo.setFixedWidth(110)
+        self.mode_combo.setToolTip("标准模式：预设驱动，字段独立填写\nH3 模式：叙事驱动，一体化多模态描述（MiniMax H3 规范）")
+        toolbar.addWidget(self.mode_combo)
+
+        toolbar.addSpacing(8)
 
         # 模型快速切换
         model_label = QLabel("🤖 模型：")
@@ -957,6 +1002,7 @@ class MainWindow(QMainWindow):
             product_info=self.product_info,
             direction=self.direction_input.text().strip(),
             use_v2=True,
+            mode=self.mode_combo.currentData() or "standard",
         )
         self.script_worker.moveToThread(self.script_thread)
         self.script_thread.started.connect(self.script_worker.run)
@@ -990,6 +1036,9 @@ class MainWindow(QMainWindow):
             self.progress_bar.setRange(0, total)
             self.progress_bar.setValue(current - 1)
             self.status_label.setText(f"第 2 步：逐帧精生成（{current}/{total}）...")
+        elif stage == "audio":
+            self.status_label.setText("第 3 步：生成 H3 全片音频字段...")
+            self.progress_bar.setRange(0, 0)
 
     def _on_script_frame_done(self, frame_num: int, frame):
         """单帧生成完成 — 实时显示"""
