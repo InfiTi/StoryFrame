@@ -1255,6 +1255,7 @@ class MainWindow(QMainWindow):
                 video_prompt_cn=item.get("video_prompt_cn", ""),
                 description=item.get("description", ""),
                 image_path=item.get("image_path"),
+                motion_sketch_path=item.get("motion_sketch_path"),
             ))
 
         self.current_storyboard = Storyboard(
@@ -1494,6 +1495,8 @@ class MainWindow(QMainWindow):
                 self.status_label.setText(
                     f"运动示意图全部完成（{self._sketch_done}/{self._sketch_total}）"
                 )
+                # 保存缓存（含草稿图路径）
+                self._save_cache_silent()
             return
         idx = self._sketch_queue.pop(0)
         self._generate_motion_sketch(idx)
@@ -1508,6 +1511,9 @@ class MainWindow(QMainWindow):
             pass
         if ok:
             self.storyboard_view.update_frame_sketch(index, path)
+            # 同步到 current_storyboard（供缓存序列化）
+            if self.current_storyboard and 0 <= index < len(self.current_storyboard.frames):
+                self.current_storyboard.frames[index].motion_sketch_path = path
         # 队列模式：更新计数并继续下一帧（失败帧静默跳过，不弹窗阻塞队列）
         if getattr(self, "_sketch_queue_active", False):
             self._sketch_done += 1
@@ -1525,6 +1531,8 @@ class MainWindow(QMainWindow):
         else:
             self.status_label.setText(f"运动示意图生成失败: {msg[:80]}")
             QMessageBox.warning(self, "生成失败", msg)
+        # 单帧模式：保存缓存（含草稿图路径）
+        self._save_cache_silent()
 
     def _generate_single_image(self):
         """生成选中帧的图片"""
@@ -1720,6 +1728,25 @@ class MainWindow(QMainWindow):
         if self._image_done >= self._image_total:
             self._finish_image_generation()
 
+    def _save_cache_silent(self):
+        """静默保存当前分镜到缓存（含图片/草稿图路径），不刷新下拉框"""
+        if not self.current_storyboard or not self.current_frames_data:
+            return
+        # 同步 current_frames_data 的路径到 current_storyboard
+        for i, fd in enumerate(self.current_frames_data):
+            if i < len(self.current_storyboard.frames):
+                f = self.current_storyboard.frames[i]
+                f.image_path = fd.get("image_path")
+                f.motion_sketch_path = fd.get("motion_sketch_path")
+        try:
+            save_cache(
+                self.current_storyboard.product_name,
+                self.current_storyboard.to_dict(),
+                self.current_storyboard.style_name,
+            )
+        except Exception:
+            pass
+
     def _finish_image_generation(self):
         """图片生成完毕"""
         self.generate_images_btn.setEnabled(True)
@@ -1737,6 +1764,9 @@ class MainWindow(QMainWindow):
             )
         else:
             self.status_label.setText(f"全部 {self._image_total} 张图片生成完成")
+
+        # 保存缓存（含图片路径）
+        self._save_cache_silent()
 
     def _export_json(self):
         """导出 JSON"""
