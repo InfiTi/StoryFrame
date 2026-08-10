@@ -165,10 +165,17 @@ class GenerationManager:
         Agnes 返回公网 URL（下载到本地），DALL-E 返回 b64_json。
         Agnes 支持图生图：通过 extra_body.image 传参考图 data URI。
         """
-        # 有参考图时，在 prompt 中加入引导语
+        # 有参考图时，在 prompt 前加入引导语：参考物理外观，禁止复制文字/logo
         effective_prompt = prompt
         if reference_images:
-            effective_prompt = prompt + " Keep the product appearance, color, shape and texture consistent with the reference image."
+            ref_guidance = (
+                "Reference image provided to show the product's physical appearance "
+                "(color, shape, texture, cross-section layers). "
+                "Use it ONLY for reproducing the product's physical look. "
+                "Explicitly exclude and do NOT reproduce any text, logo, label, watermark, "
+                "brand name, or packaging text visible in the reference image. "
+            )
+            effective_prompt = ref_guidance + prompt
 
         url = f"{base_url.rstrip('/')}/images/generations"
         headers = {"Content-Type": "application/json"}
