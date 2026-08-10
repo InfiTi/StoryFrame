@@ -33,6 +33,11 @@ class StoryboardFrame:
     transition: str = ""             # 帧间过渡方式（hard cut / whip pan / speed ramp / fade）
     motion_phase: str = ""            # 动作相位（pre-action / mid-action / post-action / static）
     image_path: Optional[str] = None  # 生成的图片路径
+    # --- H3 模式专属字段（标准模式下为空字符串）---
+    shot_label: str = ""              # H3 分镜标签，如 [Shot 1]
+    cut_timestamp: str = ""           # H3 切点时间戳，如 At 00:03.500,
+    integrated_multimodal_description: str = ""      # H3 多模态综合描述（英文）
+    integrated_multimodal_description_cn: str = ""   # H3 多模态综合描述（中文）
 
 
 @dataclass
@@ -42,6 +47,9 @@ class Storyboard:
     product_desc: str
     style_name: str
     frames: List[StoryboardFrame] = field(default_factory=list)
+    # --- H3 模式全片音频字段（标准模式下为空字符串）---
+    overall_soundscape: str = ""       # H3 全片环境音（英文）
+    non_diegetic_music: str = ""      # H3 背景音乐（英文）
 
     def to_dict(self) -> dict:
         return {
@@ -49,6 +57,8 @@ class Storyboard:
             "product_desc": self.product_desc,
             "style_name": self.style_name,
             "frames": [asdict(f) for f in self.frames],
+            "overall_soundscape": self.overall_soundscape,
+            "non_diegetic_music": self.non_diegetic_music,
         }
 
     def to_json(self) -> str:
