@@ -70,6 +70,7 @@ class GenerationManager:
             elif provider in ("dalle", "flux", "agnes"):
                 return self._generate_openai_compatible(
                     provider, prompt, output_path, size, quality, api_key, base_url, model,
+                    reference_images=reference_images,
                 )
             else:
                 return False, "", f"不支持的图片 provider: {provider}"
@@ -157,25 +158,49 @@ class GenerationManager:
     def _generate_openai_compatible(
         self, provider: str, prompt: str, output_path: str,
         size: str, quality: str, api_key: str, base_url: str, model: str,
+        reference_images: Optional[list] = None,
     ) -> tuple[bool, str, str]:
         """DALL-E / Flux / Agnes 等 OpenAI 兼容图片 API
 
         Agnes 返回公网 URL（下载到本地），DALL-E 返回 b64_json。
+        Agnes 支持图生图：通过 extra_body.image 传参考图 data URI。
         """
+        # 有参考图时，在 prompt 中加入引导语
+        effective_prompt = prompt
+        if reference_images:
+            effective_prompt = prompt + " Keep the product appearance, color, shape and texture consistent with the reference image."
+
         url = f"{base_url.rstrip('/')}/images/generations"
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
-        # Agnes 不支持 response_format 参数，DALL-E 用 b64_json
         payload = {
             "model": model,
-            "prompt": prompt,
+            "prompt": effective_prompt,
             "n": 1,
             "size": size,
         }
         if provider == "agnes":
-            pass  # Agnes 自动返回 URL，不需要 response_format
+            # Agnes 支持图生图：通过 extra_body.image 传参考图（data URI 列表）
+            if reference_images:
+                image_data_uris = []
+                for ref_path in reference_images[:1]:  # 目前只传第一张
+                    try:
+                        with open(ref_path, "rb") as f:
+                            b64 = base64.b64encode(f.read()).decode("ascii")
+                        ext = Path(ref_path).suffix.lower().lstrip(".")
+                        if ext == "jpg":
+                            ext = "jpeg"
+                        data_uri = f"data:image/{ext};base64,{b64}"
+                        image_data_uris.append(data_uri)
+                    except Exception:
+                        pass
+                if image_data_uris:
+                    payload["extra_body"] = {
+                        "image": image_data_uris,
+                        "response_format": "url",
+                    }
         else:
             payload["response_format"] = "b64_json"
         if provider in ("dalle", "flux"):

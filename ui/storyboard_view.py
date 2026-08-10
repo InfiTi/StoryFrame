@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame,
     QScrollArea, QSizePolicy, QDialog, QDoubleSpinBox, QPushButton, QFileDialog,
 )
-from PySide6.QtCore import Qt, Signal, QEvent
+from PySide6.QtCore import Qt, Signal, QEvent, QRect
 from PySide6.QtGui import QPixmap
 from pathlib import Path
 import json
@@ -29,7 +29,11 @@ def _load_font_size() -> int:
 
 
 class ImagePreviewDialog(QDialog):
-    """图片放大预览对话框"""
+    """图片放大预览对话框
+
+    点击图片本身不关闭；点击图片外区域（dialog 空白/提示文字）关闭。
+    dialog 尺寸设为屏幕 90%，图片居中，周围有可见空白区域供点击关闭。
+    """
 
     def __init__(self, image_path: str, parent=None):
         super().__init__(parent)
@@ -37,15 +41,20 @@ class ImagePreviewDialog(QDialog):
         self.setModal(True)
         self.setAttribute(Qt.WA_DeleteOnClose)
 
+        screen = self.screen()
+        avail = screen.availableGeometry() if screen else None
+
+        # dialog 尺寸设为屏幕 90%，让图片周围有可见空白区域
+        if avail:
+            self.setFixedSize(int(avail.width() * 0.9), int(avail.height() * 0.9))
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
         label = QLabel()
         pix = QPixmap(image_path)
         if not pix.isNull():
-            screen = self.screen()
-            if screen:
-                avail = screen.availableGeometry()
+            if avail:
                 max_w = int(avail.width() * 0.85)
                 max_h = int(avail.height() * 0.85)
                 if pix.width() > max_w or pix.height() > max_h:
@@ -53,28 +62,43 @@ class ImagePreviewDialog(QDialog):
             label.setPixmap(pix)
 
         label.setAlignment(Qt.AlignCenter)
-        label.setStyleSheet("background: #11111b;")
-        layout.addWidget(label)
+        label.setStyleSheet("background: transparent;")
+        layout.addWidget(label, stretch=1)
 
         hint = QLabel("点击图片外区域关闭")
         hint.setAlignment(Qt.AlignCenter)
-        hint.setStyleSheet("color: #585b70; font-size: 11px; padding: 4px;")
+        hint.setStyleSheet("color: #585b70; font-size: 11px; padding: 4px; background: #11111b;")
         layout.addWidget(hint)
 
         self.setStyleSheet("QDialog { background: #11111b; }")
         self._image_label = label
-        # 点击图片外区域（空白/提示文字）关闭；点击图片本身不关闭
+        # 点击图片外区域（dialog 空白/label 空白/提示文字）关闭；点击图片像素内不关闭
         self.installEventFilter(self)
         label.installEventFilter(self)
         hint.installEventFilter(self)
 
     def eventFilter(self, obj, event):
-        """点击图片外区域关闭预览，点击图片本身不关闭"""
+        """点击图片外区域关闭，点击图片像素内不关闭"""
         if event.type() == QEvent.MouseButtonPress:
-            # 点击图片本身：吃掉事件，不关闭、不冒泡到 dialog
             if obj is self._image_label:
+                # 检查点击是否在 pixmap 实际像素范围内
+                pix = self._image_label.pixmap()
+                if pix and not pix.isNull():
+                    lw = self._image_label.width()
+                    lh = self._image_label.height()
+                    pw = pix.width()
+                    ph = pix.height()
+                    # pixmap 居中显示，计算实际 rect
+                    x = (lw - pw) // 2
+                    y = (lh - ph) // 2
+                    pix_rect = QRect(x, y, pw, ph)
+                    pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+                    if pix_rect.contains(pos):
+                        return True  # 点在图片像素上，不关闭
+                # 点在 label 空白背景（pixmap 外）：关闭
+                self.close()
                 return True
-            # 点击空白区域或提示文字：关闭
+            # 点击 dialog 空白或提示文字：关闭
             self.close()
             return True
         return super().eventFilter(obj, event)
