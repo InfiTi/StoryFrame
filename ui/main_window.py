@@ -1206,6 +1206,9 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         self.status_label.setText(f"已生成 {len(storyboard.frames)} 帧分镜脚本（已缓存）")
 
+        # 自动生成运动示意图队列
+        self._start_sketch_queue()
+
     def _on_script_error(self, error: str):
         """分镜脚本生成失败"""
         self.generate_script_btn.setEnabled(True)
@@ -1450,10 +1453,50 @@ class MainWindow(QMainWindow):
         except Exception as e:
             import traceback
             traceback.print_exc()
+            # 队列模式：继续下一帧（避免卡住）
+            if getattr(self, "_sketch_queue_active", False):
+                self._sketch_done += 1
+                self.status_label.setText(f"运动示意图第{index + 1}帧失败，跳过：{e}")
+                self._process_next_sketch()
+                return
             self.progress_bar.setVisible(False)
             self.storyboard_view.set_sketch_buttons_enabled(True)
             self.status_label.setText(f"运动示意图生成失败: {e}")
             QMessageBox.critical(self, "生成失败", f"发生异常：\n{e}")
+
+    def _start_sketch_queue(self):
+        """生成提示词后，自动按队列生成所有帧的运动示意图"""
+        if not self.current_frames_data:
+            return
+        sketch_cfg = self.config.get("storyboard", {}).get("motion_sketch", {})
+        if not sketch_cfg.get("enabled", True):
+            return
+        mode = sketch_cfg.get("mode", "programmatic")
+        if mode in ("ai", "hybrid"):
+            provider = self.config.get("image", {}).get("provider", "")
+            if provider != "agnes":
+                return  # provider 不匹配，静默跳过
+        self._sketch_queue = list(range(len(self.current_frames_data)))
+        self._sketch_queue_active = True
+        self._sketch_done = 0
+        self._sketch_total = len(self._sketch_queue)
+        self.status_label.setText(f"运动示意图队列启动：0/{self._sketch_total}")
+        self._process_next_sketch()
+
+    def _process_next_sketch(self):
+        """处理草稿图队列的下一帧"""
+        if not getattr(self, "_sketch_queue", None) or not self._sketch_queue:
+            # 队列完成
+            if getattr(self, "_sketch_queue_active", False):
+                self._sketch_queue_active = False
+                self.progress_bar.setVisible(False)
+                self.storyboard_view.set_sketch_buttons_enabled(True)
+                self.status_label.setText(
+                    f"运动示意图全部完成（{self._sketch_done}/{self._sketch_total}）"
+                )
+            return
+        idx = self._sketch_queue.pop(0)
+        self._generate_motion_sketch(idx)
 
     def _on_sketch_finished(self, ok: bool, msg: str, path: str, index: int):
         """运动示意图生成完成"""
@@ -1463,10 +1506,20 @@ class MainWindow(QMainWindow):
             del self._sketch_mgr
         except Exception:
             pass
+        if ok:
+            self.storyboard_view.update_frame_sketch(index, path)
+        # 队列模式：更新计数并继续下一帧（失败帧静默跳过，不弹窗阻塞队列）
+        if getattr(self, "_sketch_queue_active", False):
+            self._sketch_done += 1
+            self.status_label.setText(
+                f"运动示意图进度：{self._sketch_done}/{self._sketch_total}"
+            )
+            self._process_next_sketch()
+            return
+        # 单帧模式：恢复 UI
         self.progress_bar.setVisible(False)
         self.storyboard_view.set_sketch_buttons_enabled(True)
         if ok:
-            self.storyboard_view.update_frame_sketch(index, path)
             frame_num = self.current_frames_data[index].get("frame", index + 1)
             self.status_label.setText(f"第{frame_num}帧运动示意图已生成：{path}")
         else:
