@@ -742,6 +742,325 @@ def generate_storyboard_v2(
     )
 
 
+# ========== H3 模式：叙事优先的两步生成 ==========
+
+
+def _format_h3_timestamp(elapsed_seconds: float) -> str:
+    """将累计秒数格式化为 H3 时间戳：At MM:SS.mmm,"""
+    if elapsed_seconds < 0:
+        elapsed_seconds = 0
+    minutes = int(elapsed_seconds // 60)
+    seconds = int(elapsed_seconds % 60)
+    milliseconds = int(round((elapsed_seconds - int(elapsed_seconds)) * 1000))
+    if milliseconds == 1000:
+        milliseconds = 999
+    return f"At {minutes:02d}:{seconds:02d}.{milliseconds:03d},"
+
+
+def _generate_h3_audio(
+    llm: LLMClient,
+    frames: List[StoryboardFrame],
+    product_name: str,
+    product_desc: str,
+    total_duration: float,
+    bgm_style: str = "",
+    on_chunk=None,
+) -> tuple:
+    """生成 H3 全片音频字段：overall_soundscape + non_diegetic_music
+
+    返回 (overall_soundscape, non_diegetic_music)
+    """
+    frame_summaries = []
+    for f in frames:
+        imd = f.integrated_multimodal_description or f.motion_hint or f.description
+        if imd:
+            frame_summaries.append(f"[Shot {f.frame}] {imd}")
+
+    frames_block = "\n".join(frame_summaries) if frame_summaries else "(无帧描述)"
+
+    sys_prompt = (
+        "你是 H3 提示词专家。请基于已生成的分镜叙事，总结全片音频字段。"
+        "只输出 JSON 对象，不要输出其他内容。"
+    )
+    user_prompt = f"""请为以下产品短视频生成全片音频字段。
+
+## 产品
+- 名称：{product_name}
+- 描述：{product_desc}
+- 总时长：{total_duration:.1f} 秒
+- BGM 风格偏好：{bgm_style or '未指定'}
+
+## 分镜叙事摘要
+{frames_block}
+
+## 输出要求
+输出单个 JSON 对象，包含两个字段：
+- overall_soundscape: 英文，1-4 句，总结全片环境音和物理音效（room tone + 产品动作产生的声音）。不要重复 dialogue/music。
+- non_diegetic_music: 英文，1-3 句描述 BGM（乐器、速度、节奏、动态变化），无 BGM 时填 N/A。
+
+直接输出 JSON 对象：
+```json
+{{
+  "overall_soundscape": "...",
+  "non_diegetic_music": "..."
+}}
+```"""
+
+    messages = [
+        {"role": "system", "content": sys_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    try:
+        result = llm.chat_json(messages, temperature=0.7, on_chunk=on_chunk)
+    except Exception as e:
+        print(f"⚠️ H3 全片音频生成失败: {e}")
+        return ("", "")
+
+    if isinstance(result, list):
+        result = result[0] if result else {}
+
+    soundscape = result.get("overall_soundscape", "") if isinstance(result, dict) else ""
+    music = result.get("non_diegetic_music", "") if isinstance(result, dict) else ""
+
+    # 保存调试文件
+    debug_dir = Path("outputs") / "_debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    debug_file = debug_dir / f"h3_audio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    try:
+        with open(debug_file, "w", encoding="utf-8") as f:
+            f.write(json.dumps(result, ensure_ascii=False, indent=2))
+    except Exception:
+        pass
+
+    return (soundscape, music)
+
+
+def generate_storyboard_h3(
+    llm: LLMClient,
+    product_name: str,
+    product_desc: str,
+    selling_points: str,
+    template: StyleTemplate,
+    frame_count: int,
+    total_duration: int,
+    product_info: Optional[ProductInfo] = None,
+    direction: str = "",
+    on_plan_chunk=None,
+    on_frame_chunk=None,
+    on_frame_done=None,
+    on_stage=None,
+) -> Storyboard:
+    """H3 模式两步生成分镜脚本：叙事优先
+
+    与 generate_storyboard_v2 相同的回调接口：
+    - on_plan_chunk: plan 阶段流式回调
+    - on_frame_chunk(frame_num, text): 逐帧生成流式回调
+    - on_frame_done(frame_num, frame): 单帧完成回调
+    - on_stage(stage: str): 阶段切换回调 ('plan' / 'frame:N/total' / 'audio')
+
+    H3 生成策略：
+    1. plan 阶段：用 get_h3_plan_prompt 规划叙事弧（叙事节拍 + 时长 + 过渡）
+    2. frame 阶段：每帧用 get_h3_frame_prompt，LLM 先写 integrated_multimodal_description 再派生其他字段
+    3. cut_timestamp：由代码按 duration 累计计算，保证格式正确且严格递增
+    4. audio 阶段：所有帧生成完后，单独生成全片 overall_soundscape + non_diegetic_music
+    """
+    from .prompt_loader import (
+        get_h3_system_prompt, get_h3_plan_prompt, get_h3_frame_prompt,
+    )
+
+    texture_str = _build_texture_str(product_info)
+    product_info_str = ""
+    if product_info:
+        product_info_str = (
+            f"名称：{product_name}\n描述：{product_desc}\n"
+            f"卖点：{selling_points or '美味零食'}\n质感：{texture_str or '未知'}"
+        )
+
+    # === 第一步：plan 阶段（叙事弧规划）===
+    if on_stage:
+        on_stage("plan")
+
+    plan_sys = get_h3_plan_prompt(
+        product_name=product_name,
+        product_desc=product_desc,
+        selling_points=selling_points,
+        template=template,
+        frame_count=frame_count,
+        total_duration=float(total_duration),
+        product_info=product_info_str,
+        direction=direction,
+    )
+
+    plan_user = (
+        f"请规划 {frame_count} 帧分镜方案，总时长 {total_duration} 秒。"
+        "直接输出 JSON 数组，不要输出其他内容。"
+    )
+
+    messages = [
+        {"role": "system", "content": plan_sys},
+        {"role": "user", "content": plan_user},
+    ]
+
+    plan_result = llm.chat_json(messages, temperature=0.7, on_chunk=on_plan_chunk)
+
+    # 兼容 list / dict
+    if isinstance(plan_result, dict):
+        plan_result = [plan_result]
+    if not isinstance(plan_result, list) or not plan_result:
+        raise RuntimeError("H3 plan 阶段未返回有效方案")
+
+    plan = plan_result
+
+    # 保存 plan 调试文件
+    debug_dir = Path("outputs") / "_debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    debug_file = debug_dir / f"h3_plan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    try:
+        with open(debug_file, "w", encoding="utf-8") as f:
+            f.write(json.dumps(plan, ensure_ascii=False, indent=2))
+    except Exception:
+        pass
+
+    # 归一化 plan：确保每项有 frame / duration / transition
+    normalized_plan = []
+    for i, p in enumerate(plan):
+        if not isinstance(p, dict):
+            continue
+        frame_num = p.get("frame", i + 1)
+        duration = float(p.get("duration", total_duration / max(frame_count, 1)))
+        transition = p.get("transition", "hard cut") if i > 0 else "none"
+        normalized_plan.append({
+            "frame": frame_num,
+            "duration": duration,
+            "narrative_beat": p.get("narrative_beat", ""),
+            "input_mode": p.get("input_mode", "I2VA"),
+            "transition": transition,
+            "duration_rationale": p.get("duration_rationale", ""),
+        })
+
+    if not normalized_plan:
+        raise RuntimeError("H3 plan 阶段归一化后为空")
+
+    # === 第二步：逐帧生成（叙事优先）===
+    # H3 system prompt（含 few-shot）
+    h3_sys = get_h3_system_prompt(product_texture=texture_str)
+
+    total_frames = len(normalized_plan)
+    frames: List[StoryboardFrame] = []
+    elapsed = 0.0  # 用于累计 cut_timestamp
+
+    for i, frame_plan in enumerate(normalized_plan):
+        frame_num = frame_plan["frame"]
+        duration = frame_plan["duration"]
+
+        if on_stage:
+            on_stage(f"frame:{frame_num}/{total_frames}")
+
+        # 前帧摘要（用于上下文衔接）
+        prev_summary = ""
+        if frames:
+            prev_f = frames[-1]
+            prev_summary = (
+                f"[Shot {prev_f.frame}] {prev_f.integrated_multimodal_description or prev_f.description}"
+            )
+
+        # H3 frame prompt（作为 user 消息，已含产品信息 + 生成策略）
+        frame_user = get_h3_frame_prompt(
+            frame_num=frame_num,
+            total_frames=total_frames,
+            duration=duration,
+            product_name=product_name,
+            product_desc=product_desc,
+            selling_points=selling_points,
+            template=template,
+            product_info=product_info_str,
+            prev_frame_summary=prev_summary,
+            direction=direction,
+        )
+
+        messages = [
+            {"role": "system", "content": h3_sys},
+            {"role": "user", "content": frame_user},
+        ]
+
+        try:
+            result = llm.chat_json(messages, temperature=0.8, on_chunk=on_frame_chunk)
+        except Exception as e:
+            print(f"⚠️ H3 第 {frame_num} 帧生成失败: {e}，使用空值占位")
+            result = {}
+
+        if isinstance(result, list):
+            result = result[0] if result else {}
+        if not isinstance(result, dict):
+            result = {}
+
+        # 计算 cut_timestamp：第 1 帧留空，第 2+ 帧用累计时长
+        if i == 0:
+            cut_ts = ""
+        else:
+            cut_ts = _format_h3_timestamp(elapsed)
+
+        frame = StoryboardFrame(
+            frame=result.get("frame", frame_num),
+            duration=result.get("duration", duration),
+            image_prompt=result.get("image_prompt", ""),
+            image_prompt_cn=result.get("image_prompt_cn", ""),
+            camera_motion=result.get("camera_motion", ""),
+            camera_motion_cn=result.get("camera_motion_cn", ""),
+            motion_hint=result.get("motion_hint", ""),
+            motion_hint_cn=result.get("motion_hint_cn", ""),
+            video_prompt=result.get("video_prompt", ""),
+            video_prompt_cn=result.get("video_prompt_cn", ""),
+            description=result.get("description", frame_plan.get("narrative_beat", "")),
+            transition=result.get("transition", frame_plan["transition"]),
+            motion_phase=result.get("motion_phase", "static"),
+            shot_label=result.get("shot_label", f"[Shot {frame_num}]"),
+            cut_timestamp=result.get("cut_timestamp", cut_ts) or cut_ts,
+            integrated_multimodal_description=result.get("integrated_multimodal_description", ""),
+            integrated_multimodal_description_cn=result.get("integrated_multimodal_description_cn", ""),
+        )
+        frames.append(frame)
+
+        # 累计时长（用于下一帧时间戳）
+        elapsed += frame.duration
+
+        # 保存帧调试文件
+        try:
+            debug_file = debug_dir / f"h3_frame_{frame_num}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            with open(debug_file, "w", encoding="utf-8") as f:
+                f.write(json.dumps(result, ensure_ascii=False, indent=2))
+        except Exception:
+            pass
+
+        if on_frame_done:
+            on_frame_done(frame_num, frame)
+
+    # === 第三步：全片音频字段 ===
+    if on_stage:
+        on_stage("audio")
+
+    bgm_style = template.bgm if template else ""
+    overall_soundscape, non_diegetic_music = _generate_h3_audio(
+        llm=llm,
+        frames=frames,
+        product_name=product_name,
+        product_desc=product_desc,
+        total_duration=float(total_duration),
+        bgm_style=bgm_style,
+    )
+
+    return Storyboard(
+        product_name=product_name,
+        product_desc=product_desc,
+        style_name=template.name if template else "",
+        frames=frames,
+        overall_soundscape=overall_soundscape,
+        non_diegetic_music=non_diegetic_music,
+    )
+
+
+
 # ========== 单帧重新生成 ==========
 
 def regenerate_frame(
