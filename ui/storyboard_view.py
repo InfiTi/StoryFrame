@@ -56,21 +56,25 @@ class ImagePreviewDialog(QDialog):
         label.setStyleSheet("background: #11111b;")
         layout.addWidget(label)
 
-        hint = QLabel("点击任意处关闭")
+        hint = QLabel("点击图片外区域关闭")
         hint.setAlignment(Qt.AlignCenter)
         hint.setStyleSheet("color: #585b70; font-size: 11px; padding: 4px;")
         layout.addWidget(hint)
 
         self.setStyleSheet("QDialog { background: #11111b; }")
         self._image_label = label
-        # 窗口内任意位置（图片、空白、提示文字）点击都关闭
+        # 点击图片外区域（空白/提示文字）关闭；点击图片本身不关闭
         self.installEventFilter(self)
         label.installEventFilter(self)
         hint.installEventFilter(self)
 
     def eventFilter(self, obj, event):
-        """点击窗口内任意处关闭预览"""
+        """点击图片外区域关闭预览，点击图片本身不关闭"""
         if event.type() == QEvent.MouseButtonPress:
+            # 点击图片本身：吃掉事件，不关闭、不冒泡到 dialog
+            if obj is self._image_label:
+                return True
+            # 点击空白区域或提示文字：关闭
             self.close()
             return True
         return super().eventFilter(obj, event)
