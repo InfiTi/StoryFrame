@@ -58,7 +58,7 @@ DEFAULT_CONFIG = {
         # 运动示意图（分镜蓝图）：黑白线稿+箭头，喂给视频模型理解运动
         "motion_sketch": {
             "enabled": True,
-            "mode": "programmatic",  # programmatic | ai | hybrid
+            "mode": "ai",  # programmatic | ai | hybrid
             "size": "1024x576",      # 画布尺寸（建议与视频比例一致）
             "use_for_video": True,   # 图生视频时优先用示意图作为输入
             # AI 模式提示词模板（占位符：{shape} {motion} {direction} {speed} {particles} {camera} {description}）
