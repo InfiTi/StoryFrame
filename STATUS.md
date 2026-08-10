@@ -1,6 +1,6 @@
 # StoryFrame 项目状态
 
-> 最后更新: 2026-08-06 | 版本 v0.10.0
+> 最后更新: 2026-08-10 | 版本 v0.11.0
 
 ## 概述
 分镜图生成器 — 商品信息 → 分镜脚本 → 图片/视频提示词，PySide6 桌面应用。统一生成接口支持多 provider 切换。
@@ -67,6 +67,14 @@
 - [x] **修复 AgnesImageClient response_format 位置 bug** — 按文档移入 extra_body
 
 ## 进行中
+- [ ] **H3 模式实施**（详见 `docs/h3-mode-design.md`）
+  - [ ] Step 1: StoryboardFrame 数据结构扩展
+  - [ ] Step 2: prompt_loader H3 生成函数
+  - [ ] Step 3: storyboard.py H3 生成逻辑
+  - [ ] Step 4: UI 模式切换
+  - [ ] Step 5: UI 帧卡片 H3 字段展示
+  - [ ] Step 6: few-shot 示例注入
+  - [ ] Step 7: 集成测试 + 文档更新
 - [ ] 评分系统 UI 集成（生成后自动评分+修正建议展示）
 - [ ] V2 两步生成实测验证（预设驱动 vs 旧 LLM 自由设计）
 
@@ -101,6 +109,7 @@
 | prompts/doubao_video_prompt.md | 豆包视频提示词模板（自然语言格式） |
 | docs/video_model_prompt_research.md | 视频模型 prompt 最佳实践调研报告 |
 | ui/main_window.py | 主窗口界面 |
+| docs/h3-mode-design.md | H3 模式设计文档（必读） |
 
 ## 最近变更
 
