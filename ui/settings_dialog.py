@@ -200,7 +200,7 @@ class SettingsDialog(QDialog):
 
         # --- API 类字段（dalle/flux/agnes）---
         self.img_size = QComboBox()
-        self.img_size.addItems(["1024x1024", "1024x1792", "1792x1024", "512x512"])
+        self.img_size.addItems(["1024x1024", "1024x1792", "1792x1024", "768x1344", "1344x768", "512x512", "720x1280", "1280x720"])
         self.img_size.setCurrentText(self.config["image"]["size"])
         self.img_size_row = img_form.addRow("尺寸：", self.img_size)
 
@@ -460,9 +460,9 @@ class SettingsDialog(QDialog):
 
         self.ms_size = QComboBox()
         self.ms_size.addItems([
-            "1024x576 (16:9)", "1024x1024 (1:1)", "736x1312 (9:16)",
+            "768x1344 (9:16)", "1024x576 (16:9)", "1024x1024 (1:1)",
         ])
-        cur_size = str(ms_cfg.get("size", "1024x576"))
+        cur_size = str(ms_cfg.get("size", "768x1344"))
         for i in range(self.ms_size.count()):
             if cur_size in self.ms_size.itemText(i):
                 self.ms_size.setCurrentIndex(i)

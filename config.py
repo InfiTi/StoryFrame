@@ -47,7 +47,7 @@ DEFAULT_CONFIG = {
         "base_url": "http://127.0.0.1:8188",  # ComfyUI 默认地址
         "api_key": "",                  # DALL-E/Agnes 等 API Key
         "model": "agnes-image-2.1-flash",  # 模型名（各 provider 对应不同）
-        "size": "1024x1024",
+        "size": "768x1344",   # 默认 9:16 竖屏
         "quality": "standard",
         "denoise": 0.6,                # img2img 去噪强度
     },
@@ -59,7 +59,7 @@ DEFAULT_CONFIG = {
         "motion_sketch": {
             "enabled": True,
             "mode": "ai",  # programmatic | ai | hybrid
-            "size": "1024x576",      # 画布尺寸（建议与视频比例一致）
+            "size": "768x1344",      # 画布尺寸（建议与视频比例一致）
             "use_for_video": True,   # 图生视频时优先用示意图作为输入
             # AI 模式提示词模板（占位符：{shape} {motion} {direction} {speed} {particles} {camera} {description}）
             "ai_prompt": "black and white rough line sketch, motion storyboard blueprint, a single simple {shape} as the subject, no product detail, no color, hand-drawn style arrows showing {direction} {motion}, particle marks ({particles}) bursting outward, {camera}, minimal line art, white background, schematic diagram style",
