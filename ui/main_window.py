@@ -1297,10 +1297,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "加载失败", "缓存文件已损坏或不存在")
             return
 
+        # 缓存结构：{"timestamp":..., "storyboard": {...}}
+        sb_data = data.get("storyboard", data)
+
         # 重建 Storyboard 对象
         from core.storyboard import StoryboardFrame
         frames = []
-        for item in data.get("frames", []):
+        for item in sb_data.get("frames", []):
             frames.append(StoryboardFrame(
                 frame=item.get("frame", len(frames) + 1),
                 duration=item.get("duration", 3.0),
@@ -1313,17 +1316,26 @@ class MainWindow(QMainWindow):
                 video_prompt=item.get("video_prompt", ""),
                 video_prompt_cn=item.get("video_prompt_cn", ""),
                 description=item.get("description", ""),
+                transition=item.get("transition", ""),
+                motion_phase=item.get("motion_phase", ""),
                 image_path=item.get("image_path"),
                 motion_sketch_path=item.get("motion_sketch_path"),
+                shot_label=item.get("shot_label", ""),
+                cut_timestamp=item.get("cut_timestamp", ""),
+                integrated_multimodal_description=item.get("integrated_multimodal_description", ""),
+                integrated_multimodal_description_cn=item.get("integrated_multimodal_description_cn", ""),
             ))
 
         self.current_storyboard = Storyboard(
-            product_name=data.get("product_name", ""),
-            product_desc=data.get("product_desc", ""),
-            style_name=data.get("style_name", ""),
+            product_name=sb_data.get("product_name", ""),
+            product_desc=sb_data.get("product_desc", ""),
+            style_name=sb_data.get("style_name", ""),
             frames=frames,
+            overall_soundscape=sb_data.get("overall_soundscape", ""),
+            non_diegetic_music=sb_data.get("non_diegetic_music", ""),
         )
-        self.current_frames_data = [f.__dict__ for f in frames]
+        # current_frames_data 用缓存原始 dict（保留所有字段，包括 motion_sketch_url 等）
+        self.current_frames_data = sb_data.get("frames", [f.__dict__ for f in frames])
 
         # 更新视图
         self.storyboard_view.set_frames(self.current_frames_data)
