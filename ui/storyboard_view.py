@@ -8,7 +8,7 @@
 
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame,
-    QScrollArea, QSizePolicy, QDialog, QDoubleSpinBox, QPushButton,
+    QScrollArea, QSizePolicy, QDialog, QDoubleSpinBox, QPushButton, QFileDialog,
 )
 from PySide6.QtCore import Qt, Signal, QEvent
 from PySide6.QtGui import QPixmap
@@ -715,3 +715,162 @@ class StoryboardView(QWidget):
         self.cards[index] = new_card
         if was_selected:
             new_card.set_selected(True)
+
+
+class ReferenceBar(QFrame):
+    """参考图栏 — 拖拽导入多张图片作为图生图输入"""
+
+    references_changed = Signal(list)
+
+    SUPPORTED_EXTS = ('.jpg', '.jpeg', '.png', '.webp')
+
+    def __init__(self, font_size: int = 15, parent=None):
+        super().__init__(parent)
+        self.font_size = font_size
+        self._references = []
+        self.setAcceptDrops(True)
+        self._init_ui()
+        self._apply_style()
+
+    def _init_ui(self):
+        fs = self.font_size
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(4)
+
+        # 标题行
+        header = QHBoxLayout()
+        title = QLabel("📎 参考图（图生图输入）")
+        title.setStyleSheet(f"font-size: {fs - 2}px; color: #bb9af7; font-weight: bold; background: transparent;")
+        header.addWidget(title)
+        header.addStretch()
+        self._count_label = QLabel("0 张")
+        self._count_label.setStyleSheet(f"font-size: {fs - 3}px; color: #585b70; background: transparent;")
+        header.addWidget(self._count_label)
+        clear_btn = QPushButton("清空")
+        clear_btn.setFixedHeight(20)
+        clear_btn.setCursor(Qt.PointingHandCursor)
+        clear_btn.setStyleSheet(
+            f"QPushButton {{ color: #a6adc8; font-size: {fs - 3}px; background: #313244; border: none; border-radius: 4px; padding: 2px 8px; }}"
+            f"QPushButton:hover {{ background: #45475a; }}"
+        )
+        clear_btn.clicked.connect(self.clear)
+        header.addWidget(clear_btn)
+        layout.addLayout(header)
+
+        # 缩略图滚动区
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFixedHeight(96)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self._scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        self._thumbs_widget = QWidget()
+        self._thumbs_layout = QHBoxLayout(self._thumbs_widget)
+        self._thumbs_layout.setContentsMargins(0, 0, 0, 0)
+        self._thumbs_layout.setSpacing(6)
+        self._thumbs_layout.addStretch()
+        self._scroll.setWidget(self._thumbs_widget)
+        layout.addWidget(self._scroll)
+
+        # 拖拽提示（空时显示）
+        self._hint = QLabel("拖拽图片到此处，或点击选择")
+        self._hint.setAlignment(Qt.AlignCenter)
+        self._hint.setCursor(Qt.PointingHandCursor)
+        self._hint.setStyleSheet(
+            f"color: #585b70; font-size: {fs - 2}px; border: 1px dashed #45475a; border-radius: 4px; padding: 10px;"
+        )
+        self._hint.mousePressEvent = self._on_hint_click
+        layout.addWidget(self._hint)
+
+        self._update_visibility()
+
+    def _apply_style(self):
+        self.setStyleSheet("QFrame { background: #1a1b2e; border: 1px solid #313244; border-radius: 6px; }")
+
+    def _update_visibility(self):
+        has = bool(self._references)
+        self._hint.setVisible(not has)
+        self._scroll.setVisible(has)
+        self._count_label.setText(f"{len(self._references)} 张")
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        paths = []
+        for url in event.mimeData().urls():
+            p = url.toLocalFile()
+            if p and p.lower().endswith(self.SUPPORTED_EXTS):
+                paths.append(p)
+        if paths:
+            self._references.extend(paths)
+            self._update_thumbs()
+            self._update_visibility()
+            self.references_changed.emit(self._references)
+            event.acceptProposedAction()
+
+    def _on_hint_click(self, event):
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "选择参考图", "", "图片文件 (*.jpg *.jpeg *.png *.webp)"
+        )
+        if paths:
+            self._references.extend(paths)
+            self._update_thumbs()
+            self._update_visibility()
+            self.references_changed.emit(self._references)
+
+    def _update_thumbs(self):
+        # 清空现有（保留末尾 stretch）
+        while self._thumbs_layout.count() > 1:
+            item = self._thumbs_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+        for i, path in enumerate(self._references):
+            thumb = self._make_thumb(path, i)
+            self._thumbs_layout.insertWidget(i, thumb)
+
+    def _make_thumb(self, path, index):
+        fs = self.font_size
+        container = QFrame()
+        container.setFixedSize(76, 88)
+        container.setCursor(Qt.PointingHandCursor)
+        container.setToolTip(f"{Path(path).name}\n点击删除")
+        container.setStyleSheet("QFrame { background: #11111b; border-radius: 4px; } QFrame:hover { border: 1px solid #f38ba8; }")
+        cl = QVBoxLayout(container)
+        cl.setContentsMargins(2, 2, 2, 2)
+        cl.setSpacing(2)
+        img = QLabel()
+        img.setFixedSize(72, 68)
+        img.setAlignment(Qt.AlignCenter)
+        pix = QPixmap(path)
+        if not pix.isNull():
+            img.setPixmap(pix.scaled(72, 68, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        img.setStyleSheet("background: transparent;")
+        cl.addWidget(img)
+        name = QLabel(Path(path).name[:10])
+        name.setAlignment(Qt.AlignCenter)
+        name.setStyleSheet(f"font-size: {fs - 5}px; color: #585b70; background: transparent;")
+        cl.addWidget(name)
+        container.mousePressEvent = lambda e, idx=index: self._remove_at(idx)
+        return container
+
+    def _remove_at(self, index):
+        if 0 <= index < len(self._references):
+            del self._references[index]
+            self._update_thumbs()
+            self._update_visibility()
+            self.references_changed.emit(self._references)
+
+    def get_references(self):
+        return list(self._references)
+
+    def clear(self):
+        if not self._references:
+            return
+        self._references.clear()
+        self._update_thumbs()
+        self._update_visibility()
+        self.references_changed.emit(self._references)

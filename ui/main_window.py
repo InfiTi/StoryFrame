@@ -24,7 +24,7 @@ from core.product_parser import parse_product_markdown, scan_product_directory, 
 from core.script_cache import save_cache, list_cache, load_cache, cleanup_cache
 from core.exporter import export_json, export_markdown, export_package
 from ui.settings_dialog import SettingsDialog
-from ui.storyboard_view import StoryboardView
+from ui.storyboard_view import StoryboardView, ReferenceBar
 
 
 # ========== Worker 线程 ==========
@@ -573,6 +573,10 @@ class MainWindow(QMainWindow):
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 参考图栏（拖拽导入，图生图输入）
+        self.reference_bar = ReferenceBar()
+        right_layout.addWidget(self.reference_bar)
 
         # 分镜视图（包含帧列表+详情+提示词）
         self.storyboard_view = StoryboardView()
@@ -1489,13 +1493,14 @@ class MainWindow(QMainWindow):
         if not self.current_storyboard:
             return
 
-        # 如果是 ComfyUI/SD/Kontext provider，让用户选参考图
+        # 参考图：优先用参考图栏导入的，否则对支持的 provider 弹选择
         provider = self.config["image"].get("provider", "")
-        reference_image = None
-        reference_images = None
         denoise = self.config["image"].get("denoise", 0.6)
+        reference_images = list(self.reference_bar.get_references())
+        reference_image = reference_images[0] if reference_images else None
 
-        if provider in ("comfyui", "sd", "kontext"):
+        if provider in ("comfyui", "sd", "kontext") and not reference_images:
+            # 参考图栏为空，弹文件对话框选择
             reference_image = self._select_reference_image()
             if reference_image is None:
                 return  # 用户取消
