@@ -72,6 +72,10 @@ class ImagePreviewDialog(QDialog):
 
         self.setStyleSheet("QDialog { background: #11111b; }")
         self._image_label = label
+        self._image_path = image_path
+        # 右键菜单支持
+        label.setContextMenuPolicy(Qt.CustomContextMenu)
+        label.customContextMenuRequested.connect(self._show_context_menu)
         # 点击图片外区域（dialog 空白/label 空白/提示文字）关闭；点击图片像素内不关闭
         self.installEventFilter(self)
         label.installEventFilter(self)
@@ -102,6 +106,21 @@ class ImagePreviewDialog(QDialog):
             self.close()
             return True
         return super().eventFilter(obj, event)
+
+    def _show_context_menu(self, pos):
+        """放大预览右键菜单"""
+        from PySide6.QtWidgets import QMenu, QApplication, QToolTip
+        menu = QMenu(self)
+        act_copy_image = menu.addAction("🖼️ 复制图片到剪贴板")
+        act_copy_path = menu.addAction("📋 复制本地路径")
+        action = menu.exec(self._image_label.mapToGlobal(pos))
+        clipboard = QApplication.clipboard()
+        if action == act_copy_image:
+            clipboard.setPixmap(QPixmap(self._image_path))
+            QToolTip.showText(self._image_label.mapToGlobal(pos), "已复制图片到剪贴板")
+        elif action == act_copy_path:
+            clipboard.setText(self._image_path)
+            QToolTip.showText(self._image_label.mapToGlobal(pos), "已复制本地路径")
 
 
 class FrameCard(QFrame):
@@ -169,6 +188,9 @@ class FrameCard(QFrame):
             self.image_label.setToolTip("无图片")
 
         self.image_label.mousePressEvent = self._on_image_click
+        # 右键菜单支持
+        self.image_label.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.image_label.customContextMenuRequested.connect(self._show_image_context_menu)
 
         # 缩略图列：产品图 + 运动示意图
         thumb_col = QVBoxLayout()
@@ -186,6 +208,8 @@ class FrameCard(QFrame):
         )
         self.sketch_label.setText("✏️")
         self.sketch_label.mousePressEvent = self._on_sketch_click
+        self.sketch_label.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.sketch_label.customContextMenuRequested.connect(self._show_sketch_context_menu)
         thumb_col.addWidget(self.sketch_label, alignment=Qt.AlignTop)
 
         layout.addLayout(thumb_col)
@@ -538,6 +562,60 @@ class FrameCard(QFrame):
         path = self.frame_data.get("motion_sketch_path", "")
         if path and Path(path).exists():
             self.image_clicked.emit(path)
+
+    def _show_image_context_menu(self, pos):
+        """图片缩略图右键菜单"""
+        from PySide6.QtWidgets import QMenu, QApplication, QToolTip
+        img_path = self.frame_data.get("image_path")
+        img_url = self.frame_data.get("image_url", "")
+        if not img_path or not Path(img_path).exists():
+            return
+        menu = QMenu(self)
+        act_copy_image = menu.addAction("🖼️ 复制图片到剪贴板")
+        menu.addSeparator()
+        act_copy_path = menu.addAction("📋 复制本地路径")
+        if img_url:
+            act_copy_url = menu.addAction("🔗 复制公网URL")
+        else:
+            act_copy_url = None
+        action = menu.exec(self.image_label.mapToGlobal(pos))
+        clipboard = QApplication.clipboard()
+        if action == act_copy_image:
+            clipboard.setPixmap(QPixmap(img_path))
+            QToolTip.showText(self.image_label.mapToGlobal(pos), "已复制图片到剪贴板")
+        elif action == act_copy_path:
+            clipboard.setText(img_path)
+            QToolTip.showText(self.image_label.mapToGlobal(pos), "已复制本地路径")
+        elif action and act_copy_url and action == act_copy_url:
+            clipboard.setText(img_url)
+            QToolTip.showText(self.image_label.mapToGlobal(pos), "已复制公网URL")
+
+    def _show_sketch_context_menu(self, pos):
+        """草稿图缩略图右键菜单"""
+        from PySide6.QtWidgets import QMenu, QApplication, QToolTip
+        sketch_path = self.frame_data.get("motion_sketch_path", "")
+        sketch_url = self.frame_data.get("motion_sketch_url", "")
+        if not sketch_path or not Path(sketch_path).exists():
+            return
+        menu = QMenu(self)
+        act_copy_image = menu.addAction("🖼️ 复制草稿图到剪贴板")
+        menu.addSeparator()
+        act_copy_path = menu.addAction("📋 复制本地路径")
+        if sketch_url:
+            act_copy_url = menu.addAction("🔗 复制公网URL")
+        else:
+            act_copy_url = None
+        action = menu.exec(self.sketch_label.mapToGlobal(pos))
+        clipboard = QApplication.clipboard()
+        if action == act_copy_image:
+            clipboard.setPixmap(QPixmap(sketch_path))
+            QToolTip.showText(self.sketch_label.mapToGlobal(pos), "已复制草稿图到剪贴板")
+        elif action == act_copy_path:
+            clipboard.setText(sketch_path)
+            QToolTip.showText(self.sketch_label.mapToGlobal(pos), "已复制本地路径")
+        elif action and act_copy_url and action == act_copy_url:
+            clipboard.setText(sketch_url)
+            QToolTip.showText(self.sketch_label.mapToGlobal(pos), "已复制公网URL")
 
     def mousePressEvent(self, event):
         """点击卡片选中"""
