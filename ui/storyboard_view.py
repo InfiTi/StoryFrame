@@ -188,6 +188,22 @@ class FrameCard(QFrame):
         )
         self.duration_spin.valueChanged.connect(self._on_duration_spin_changed)
         dur_row.addWidget(self.duration_spin)
+
+        # H3 字段：shot_label + cut_timestamp（标准模式为空，不显示）
+        shot_label = self.frame_data.get("shot_label", "")
+        cut_ts = self.frame_data.get("cut_timestamp", "")
+        if shot_label or cut_ts:
+            h3_tag = shot_label
+            if cut_ts:
+                h3_tag = (shot_label + "  " + cut_ts).strip() if shot_label else cut_ts
+            self.h3_tag_label = QLabel(h3_tag)
+            self.h3_tag_label.setStyleSheet(
+                f"color: #bb9af7; font-size: {fs - 2}px; font-weight: bold; "
+                f"background: #1e1e2e; border-radius: 4px; padding: 2px 8px;"
+            )
+            self.h3_tag_label.setToolTip("H3 分镜标签 + 切点时间戳")
+            dur_row.addWidget(self.h3_tag_label)
+
         dur_row.addStretch()
 
         # 重新生成按钮
@@ -240,6 +256,12 @@ class FrameCard(QFrame):
                               self.frame_data.get("motion_hint", ""),
                               self.frame_data.get("motion_hint_cn", ""))
 
+        # H3 多模态综合描述（空则不显示）
+        imd_en = self.frame_data.get("integrated_multimodal_description", "")
+        imd_cn = self.frame_data.get("integrated_multimodal_description_cn", "")
+        if imd_en or imd_cn:
+            self._add_field(content, "多模态描述", imd_en, imd_cn)
+
         # 画面描述
         desc = self.frame_data.get("description", "")
         if desc:
@@ -257,6 +279,42 @@ class FrameCard(QFrame):
             desc_text.setStyleSheet(f"font-size: {fs}px; color: #a6adc8; background: transparent;")
             desc_layout.addWidget(desc_text)
             content.addWidget(desc_frame)
+
+        # H3 全片音频字段（只在最后一帧的 frame_data 中存在，空则不显示）
+        soundscape = self.frame_data.get("overall_soundscape", "")
+        music = self.frame_data.get("non_diegetic_music", "")
+        if soundscape or music:
+            audio_frame = QFrame()
+            audio_frame.setStyleSheet(
+                "QFrame { background: #1a1b2e; border: 1px solid #bb9af7; border-radius: 4px; }"
+            )
+            audio_layout = QVBoxLayout(audio_frame)
+            audio_layout.setContentsMargins(8, 4, 8, 4)
+            audio_layout.setSpacing(2)
+            audio_title = QLabel("全片音频（H3）")
+            audio_title.setStyleSheet(
+                f"font-size: {fs - 3}px; color: #bb9af7; font-weight: bold; background: transparent;"
+            )
+            audio_layout.addWidget(audio_title)
+            if soundscape:
+                sc_label = QLabel("环境音")
+                sc_label.setStyleSheet(f"font-size: {fs - 3}px; color: #585b70; font-weight: bold; background: transparent;")
+                audio_layout.addWidget(sc_label)
+                sc_text = QLabel(soundscape)
+                sc_text.setWordWrap(True)
+                sc_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
+                sc_text.setStyleSheet(f"font-size: {fs}px; color: #cdd6f4; background: transparent;")
+                audio_layout.addWidget(sc_text)
+            if music:
+                mu_label = QLabel("背景音乐")
+                mu_label.setStyleSheet(f"font-size: {fs - 3}px; color: #585b70; font-weight: bold; background: transparent;")
+                audio_layout.addWidget(mu_label)
+                mu_text = QLabel(music)
+                mu_text.setWordWrap(True)
+                mu_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
+                mu_text.setStyleSheet(f"font-size: {fs}px; color: #a6adc8; background: transparent;")
+                audio_layout.addWidget(mu_text)
+            content.addWidget(audio_frame)
 
         content.addStretch()
         layout.addLayout(content, stretch=1)

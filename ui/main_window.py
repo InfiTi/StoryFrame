@@ -1172,6 +1172,13 @@ class MainWindow(QMainWindow):
             self.current_frames_data = [f.__dict__ for f in storyboard.frames]
             self.storyboard_view.set_frames(self.current_frames_data)
 
+        # H3 模式：把全片音频字段注入到最后一帧的 frame_data，供 FrameCard 展示
+        if storyboard.overall_soundscape or storyboard.non_diegetic_music:
+            if self.current_frames_data:
+                last_idx = len(self.current_frames_data) - 1
+                self.current_frames_data[last_idx]["overall_soundscape"] = storyboard.overall_soundscape
+                self.current_frames_data[last_idx]["non_diegetic_music"] = storyboard.non_diegetic_music
+
         # 保存到缓存
         product_name = storyboard.product_name
         max_versions = self.config.get("cache", {}).get("max_versions", 3)
