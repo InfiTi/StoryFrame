@@ -668,6 +668,60 @@ def get_doubao_video_prompt(
 # ========== H3 提示词加载 ==========
 
 
+def _load_few_shot(product_texture: str = "", max_items: int = 3) -> str:
+    """从 few_shot_extracted.json 按质感读取 few-shot 示例，注入到 system prompt
+
+    返回格式化的文本段落，如果没有匹配则返回空字符串。
+    """
+    few_shot_path = PROMPTS_DIR / "few_shot_extracted.json"
+    if not few_shot_path.exists():
+        return ""
+
+    import json
+    try:
+        data = json.loads(few_shot_path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+
+    # 质感关键词到 few_shot key 的映射
+    texture_lower = (product_texture or "").lower()
+    key_map = {
+        "crispy": ["crispy"],
+        "soft_chewy": ["soft", "chewy", "mochi"],
+        "liquid_creamy": ["liquid", "cream", "sauce"],
+        "frozen_icy": ["frozen", "ice"],
+    }
+
+    matched_key = ""
+    for fs_key, keywords in key_map.items():
+        if any(kw in texture_lower for kw in keywords):
+            matched_key = fs_key
+            break
+
+    if not matched_key or matched_key not in data:
+        matched_key = "crispy" if "crispy" in data else (list(data.keys())[0] if data else "")
+
+    if not matched_key:
+        return ""
+
+    items = data[matched_key][:max_items]
+    if not items:
+        return ""
+
+    lines = ["\n---\n\n## 参考示例（Few-Shot）\n", "以下是一些高质量的产品描述提示词示例，请参考其描述风格、词汇选择和结构组织：\n"]
+    for i, item in enumerate(items, 1):
+        title = item.get("title", "示例 " + str(i))
+        ct = item.get("content", "")
+        if len(ct) > 800:
+            ct = ct[:800] + "..."
+        lines.append("### 示例 " + str(i) + "：" + title)
+        lines.append("```")
+        lines.append(ct)
+        lines.append("```\n")
+
+    return "\n".join(lines)
+
+
 def get_h3_system_prompt(product_texture: str = "") -> str:
     """获取 H3 模式的系统提示词
 
@@ -679,6 +733,10 @@ def get_h3_system_prompt(product_texture: str = "") -> str:
     # 优先使用独立的 H3 系统提示词文件
     h3_prompt = _load_template("h3_system_prompt")
     if h3_prompt:
+        # 追加 few-shot 示例
+        few_shot = _load_few_shot(product_texture)
+        if few_shot:
+            h3_prompt += few_shot
         return h3_prompt
 
     # 回退：模块化组装 + 追加 H3 输出规范
@@ -957,3 +1015,170 @@ motion_hint, motion_hint_cn, video_prompt, video_prompt_cn, description。"""
         "preset_id": preset_id or "未指定",
         "preset_dimensions": preset_dimensions or "未指定",
     })
+
+
+def get_h3_plan_prompt(product_name: str, product_desc: str, selling_points: str,
+                       template, frame_count: int, total_duration: float,
+                       product_info: str = "", direction: str = "") -> str:
+    """H3 模式 plan 阶段提示词
+
+    H3 plan 不选镜头预设，而是规划叙事弧：
+    1. 输入模式判断（T2VA/I2VA/Ref2VA 等）
+    2. 每帧的叙事节拍（起承转合）
+    3. 过渡方式
+    4. 时长分配
+    """
+    prompt = f"""你是一个专业的产品短视频分镜导演，精通 H3 提示词写作规范。
+
+## 任务
+为产品「{product_name}」规划一个 {frame_count} 帧的短视频分镜方案。
+
+## 产品信息
+- 名称：{product_name}
+- 描述：{product_desc}
+- 卖点：{selling_points or "美味零食"}
+"""
+    if product_info:
+        prompt += f"- 详细信息：{product_info}\n"
+    if direction:
+        prompt += f"- 视频方向：{direction}\n"
+
+    prompt += f"""
+## 规划要求
+
+### 1. 输入模式判断
+根据产品特征和可用素材，确定输入模式：
+- T2VA（纯文本生成视频）
+- I2VA（图片+文本生成视频）
+- Ref2VA（参考图生成视频）
+
+### 2. 叙事弧规划
+为每帧分配叙事节拍：
+- 第1帧：开场（建立产品视觉印象）
+- 中间帧：发展（展示质感、动作、卖点）
+- 末帧：收束（最终呈现 + 品牌定格感）
+
+### 3. 时长分配
+总时长 {total_duration} 秒，分配到 {frame_count} 帧。
+短帧（0.5-1.0s）适合快切、碎裂、飞溅等瞬时动作。
+长帧（1.5-2.5s）适合拉丝、流淌、渐显等持续动作。
+
+### 4. 过渡方式
+为每帧指定过渡到下一帧的方式：
+- hard cut（硬切，适合快节奏）
+- whip pan（甩镜，适合位置/角度切换）
+- speed ramp（速度渐变，适合动静转换）
+- fade（渐变，适合开场/结尾）
+
+## 输出格式
+输出 JSON 数组，每个元素代表一帧：
+```json
+[
+  {{
+    "frame": 1,
+    "duration": 1.0,
+    "shot_label": "[Shot 1]",
+    "narrative_beat": "开场：产品全貌建立",
+    "input_mode": "I2VA",
+    "transition": "fade",
+    "duration_rationale": "开场需要足够时间建立视觉印象"
+  }}
+]
+```
+
+直接输出 JSON 数组，不要输出其他内容。
+"""
+    return prompt
+
+
+def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
+                         product_name: str, product_desc: str, selling_points: str,
+                         template, product_info: str = "",
+                         prev_frame_summary: str = "", direction: str = "") -> str:
+    """H3 模式逐帧生成提示词
+
+    H3 frame 的核心策略：先写 integrated_multimodal_description，再从中派生其他字段。
+    """
+    style_name = template.name if template else ""
+
+    # 构建可选信息行（避免 f-string 中包含反斜杠）
+    info_line = "- 详细：" + product_info if product_info else ""
+    direction_line = "- 视频方向：" + direction if direction else ""
+    style_line = "- 风格：" + style_name if style_name else ""
+    prev_section = ""
+    if prev_frame_summary:
+        prev_section = "## 前帧摘要\n" + prev_frame_summary
+    ts_hint = "（第1帧留空）" if frame_num == 1 else "At 00:XX.XXX,（根据总时长推算）"
+
+    prompt = f"""你是 H3 提示词专家。请为第 {frame_num} 帧生成完整的提示词。
+
+## 本帧参数
+- 帧号：{frame_num} / {total_frames}
+- 时长：{duration:.1f} 秒
+- 产品：{product_name}
+
+## 产品信息
+- 描述：{product_desc}
+- 卖点：{selling_points or "美味零食"}
+{info_line}
+{direction_line}
+{style_line}
+
+{prev_section}
+
+## 生成策略（叙事优先）
+
+### 第一步：写 integrated_multimodal_description
+写一段 80-150 词的英文叙事，融合以下元素：
+- 画面主体：产品在做什么物理动作
+- 镜头运动：推/拉/摇/移/跟，幅度和速度
+- 声音线索：产品动作产生的声音（碎裂声/流淌声/咀嚼声等）
+- 环境氛围：光线/温度/空气感
+- 时间感：动作是瞬时还是持续
+
+这是本帧的灵魂字段——不是字段拼凑，是一体化叙事。
+
+### 第二步：从中派生以下字段
+- image_prompt：从叙事中提取画面描述（60-100 词），末尾加 no text, no words, no logo, no watermark
+- camera_motion：从叙事中提取镜头运动（类型+幅度+速度，自然英语）
+- motion_hint：从叙事中提取画面内动态
+- video_prompt：从叙事中提取视频生成指令（40-70 词自然语言）
+- transition：过渡到下一帧的方式（hard cut / whip pan / speed ramp / fade）
+
+### 第三步：写中文对照
+- image_prompt_cn：image_prompt 的中文翻译（纯中文，无残留英文）
+- camera_motion_cn、motion_hint_cn、video_prompt_cn：对应中文
+
+### 第四步：H3 格式字段
+- shot_label：[Shot {frame_num}]
+- cut_timestamp：{ts_hint}
+
+## 输出格式
+输出单个 JSON 对象：
+```json
+{{
+  "frame": {frame_num},
+  "duration": {duration},
+  "shot_label": "[Shot {frame_num}]",
+  "cut_timestamp": "",
+  "integrated_multimodal_description": "...",
+  "image_prompt": "...",
+  "image_prompt_cn": "...",
+  "camera_motion": "...",
+  "camera_motion_cn": "...",
+  "motion_hint": "...",
+  "motion_hint_cn": "...",
+  "video_prompt": "...",
+  "video_prompt_cn": "...",
+  "transition": "..."
+}}
+```
+
+## 约束
+- image_prompt 末尾必须加：no text, no words, no letters, no logo, no watermark, no label
+- image_prompt_cn 纯中文，禁止残留英文单词
+- video_prompt 40-70 词，禁止精确数值（如 0.6s, 270 degrees）
+- 画面比例 9:16 竖屏，关键元素在中间 80%
+- 直接输出 JSON，不要输出其他内容
+"""
+    return prompt
