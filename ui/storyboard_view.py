@@ -280,6 +280,19 @@ class FrameCard(QFrame):
         self.copy_sketch_url_btn.clicked.connect(self._copy_sketch_url)
         dur_row.addWidget(self.copy_sketch_url_btn)
 
+        # 复制图片 URL 按钮
+        self.copy_image_url_btn = QPushButton("🖼️")
+        self.copy_image_url_btn.setFixedSize(fs + 6, fs + 6)
+        self.copy_image_url_btn.setToolTip("复制生成图片的公网URL（粘贴给外部AI使用）")
+        self.copy_image_url_btn.setCursor(Qt.PointingHandCursor)
+        self.copy_image_url_btn.setStyleSheet(
+            f"QPushButton {{ border: none; background: transparent; font-size: {fs}px; "
+            f"padding: 0px; }}"
+            f"QPushButton:hover {{ background: #313244; border-radius: 4px; }}"
+        )
+        self.copy_image_url_btn.clicked.connect(self._copy_image_url)
+        dur_row.addWidget(self.copy_image_url_btn)
+
         content.addLayout(dur_row)
 
         # 图片提示词 EN/CN
@@ -495,6 +508,19 @@ class FrameCard(QFrame):
         from PySide6.QtWidgets import QToolTip
         QToolTip.showText(self.copy_sketch_url_btn.mapToGlobal(QPoint(0, -30)),
                           "已复制草稿图URL到剪贴板")
+
+    def _copy_image_url(self):
+        """复制生成图片的公网URL到剪贴板"""
+        from PySide6.QtWidgets import QApplication, QToolTip
+        url = self.frame_data.get("image_url", "")
+        if not url:
+            QToolTip.showText(self.copy_image_url_btn.mapToGlobal(QPoint(0, -30)),
+                              "该帧没有图片公网URL")
+            return
+        clipboard = QApplication.clipboard()
+        clipboard.setText(url)
+        QToolTip.showText(self.copy_image_url_btn.mapToGlobal(QPoint(0, -30)),
+                          "已复制图片URL到剪贴板")
 
     def _on_duration_spin_changed(self, value: float):
         """帧时长被修改"""

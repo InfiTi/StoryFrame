@@ -174,7 +174,7 @@ class GenerateScriptWorker(QObject):
 
 class GenerateImageWorker(QObject):
     """生成单帧图片的工作线程"""
-    finished = Signal(int, str)  # frame_index, image_path
+    finished = Signal(int, str, str)  # frame_index, image_path, image_url
     error = Signal(int, str)     # frame_index, error_msg
 
     def __init__(self, image_config, frame_index, prompt, output_path,
@@ -203,7 +203,14 @@ class GenerateImageWorker(QObject):
             )
             mgr.close()
             if ok:
-                self.finished.emit(self.frame_index, self.output_path)
+                # 从 msg 中提取公网 URL（格式："生成成功（公网URL: xxx）"）
+                image_url = ""
+                if "公网URL:" in msg:
+                    try:
+                        image_url = msg.split("公网URL:")[1].rstrip("）").strip()
+                    except Exception:
+                        pass
+                self.finished.emit(self.frame_index, self.output_path, image_url)
             else:
                 self.error.emit(self.frame_index, msg)
         except Exception as e:
@@ -1319,6 +1326,7 @@ class MainWindow(QMainWindow):
                 transition=item.get("transition", ""),
                 motion_phase=item.get("motion_phase", ""),
                 image_path=item.get("image_path"),
+                image_url=item.get("image_url", ""),
                 motion_sketch_path=item.get("motion_sketch_path"),
                 motion_sketch_url=item.get("motion_sketch_url", ""),
                 shot_label=item.get("shot_label", ""),
@@ -1784,7 +1792,7 @@ class MainWindow(QMainWindow):
         if self._image_queue:
             self._generate_next_image()
 
-    def _on_image_finished(self, frame_index: int, image_path: str):
+    def _on_image_finished(self, frame_index: int, image_path: str, image_url: str = ""):
         """单帧图片生成完成"""
         self._image_done += 1
         self.progress_bar.setValue(self._image_done)
@@ -1792,7 +1800,14 @@ class MainWindow(QMainWindow):
         # 更新数据和视图
         if 0 <= frame_index < len(self.current_frames_data):
             self.current_frames_data[frame_index]["image_path"] = image_path
+            if image_url:
+                self.current_frames_data[frame_index]["image_url"] = image_url
         self.storyboard_view.update_frame_image(frame_index, image_path)
+        # 同步到 storyboard 对象
+        if self.current_storyboard and 0 <= frame_index < len(self.current_storyboard.frames):
+            self.current_storyboard.frames[frame_index].image_path = image_path
+            if image_url:
+                self.current_storyboard.frames[frame_index].image_url = image_url
 
         if self._image_done >= self._image_total:
             self._finish_image_generation()
@@ -1815,6 +1830,7 @@ class MainWindow(QMainWindow):
             if i < len(self.current_storyboard.frames):
                 f = self.current_storyboard.frames[i]
                 f.image_path = fd.get("image_path")
+                f.image_url = fd.get("image_url", "")
                 f.motion_sketch_path = fd.get("motion_sketch_path")
                 f.motion_sketch_url = fd.get("motion_sketch_url", "")
         try:

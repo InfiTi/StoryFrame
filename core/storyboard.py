@@ -33,6 +33,7 @@ class StoryboardFrame:
     transition: str = ""             # 帧间过渡方式（hard cut / whip pan / speed ramp / fade）
     motion_phase: str = ""            # 动作相位（pre-action / mid-action / post-action / static）
     image_path: Optional[str] = None  # 生成的图片路径
+    image_url: str = ""                        # 生成图片的公网URL（Agnes 返回，供外部使用）
     motion_sketch_path: Optional[str] = None  # 运动示意图路径
     motion_sketch_url: str = ""               # 运动示意图公网URL（Agnes 返回，供外部使用）
     # --- H3 模式专属字段（标准模式下为空字符串）---
