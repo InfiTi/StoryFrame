@@ -215,7 +215,7 @@ class GenerateImageWorker(QObject):
 class MotionSketchWorker(QThread):
     """生成运动示意图的工作线程"""
     progress = Signal(int, str)  # 进度百分比, 状态文字
-    finished_signal = Signal(bool, str, str, int)  # ok, message, local_path, frame_index
+    finished_signal = Signal(bool, str, str, int, str)  # ok, message, local_path, frame_index, public_url
 
     def __init__(self, mgr, frame, sketch_config, output_path, frame_index):
         super().__init__()
@@ -236,11 +236,11 @@ class MotionSketchWorker(QThread):
                 self.frame["motion_sketch_path"] = path
                 if url:
                     self.frame["motion_sketch_url"] = url
-            self.finished_signal.emit(ok, msg, path if ok else "", self.frame_index)
+            self.finished_signal.emit(ok, msg, path if ok else "", self.frame_index, url or "")
         except Exception as e:
             import traceback
             traceback.print_exc()
-            self.finished_signal.emit(False, str(e), "", self.frame_index)
+            self.finished_signal.emit(False, str(e), "", self.frame_index, "")
 
 
 class RegenerateFrameWorker(QObject):
@@ -1320,6 +1320,7 @@ class MainWindow(QMainWindow):
                 motion_phase=item.get("motion_phase", ""),
                 image_path=item.get("image_path"),
                 motion_sketch_path=item.get("motion_sketch_path"),
+                motion_sketch_url=item.get("motion_sketch_url", ""),
                 shot_label=item.get("shot_label", ""),
                 cut_timestamp=item.get("cut_timestamp", ""),
                 integrated_multimodal_description=item.get("integrated_multimodal_description", ""),
@@ -1519,7 +1520,7 @@ class MainWindow(QMainWindow):
                 )
             )
             worker.finished_signal.connect(
-                lambda ok, msg, path, idx: self._on_sketch_finished(ok, msg, path, idx)
+                lambda ok, msg, path, idx, url: self._on_sketch_finished(ok, msg, path, idx, url)
             )
             worker.start()
         except Exception as e:
@@ -1572,7 +1573,7 @@ class MainWindow(QMainWindow):
         idx = self._sketch_queue.pop(0)
         self._generate_motion_sketch(idx)
 
-    def _on_sketch_finished(self, ok: bool, msg: str, path: str, index: int):
+    def _on_sketch_finished(self, ok: bool, msg: str, path: str, index: int, url: str = ""):
         """运动示意图生成完成"""
         try:
             self._sketch_mgr.close()
@@ -1582,9 +1583,15 @@ class MainWindow(QMainWindow):
             pass
         if ok:
             self.storyboard_view.update_frame_sketch(index, path)
-            # 同步到 current_storyboard（供缓存序列化）
+            # 同步到 current_frames_data 和 current_storyboard（供缓存序列化）
+            if 0 <= index < len(self.current_frames_data):
+                self.current_frames_data[index]["motion_sketch_path"] = path
+                if url:
+                    self.current_frames_data[index]["motion_sketch_url"] = url
             if self.current_storyboard and 0 <= index < len(self.current_storyboard.frames):
                 self.current_storyboard.frames[index].motion_sketch_path = path
+                if url:
+                    self.current_storyboard.frames[index].motion_sketch_url = url
         # 队列模式：更新计数并继续下一帧（失败帧静默跳过，不弹窗阻塞队列）
         if getattr(self, "_sketch_queue_active", False):
             self._sketch_done += 1
@@ -1809,6 +1816,7 @@ class MainWindow(QMainWindow):
                 f = self.current_storyboard.frames[i]
                 f.image_path = fd.get("image_path")
                 f.motion_sketch_path = fd.get("motion_sketch_path")
+                f.motion_sketch_url = fd.get("motion_sketch_url", "")
         try:
             save_cache(
                 self.current_storyboard.product_name,

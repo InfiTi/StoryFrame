@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame,
     QScrollArea, QSizePolicy, QDialog, QDoubleSpinBox, QPushButton, QFileDialog,
 )
-from PySide6.QtCore import Qt, Signal, QEvent, QRect
+from PySide6.QtCore import Qt, Signal, QEvent, QRect, QPoint
 from PySide6.QtGui import QPixmap
 from pathlib import Path
 import json
@@ -267,6 +267,19 @@ class FrameCard(QFrame):
             dur_row.addWidget(btn)
             self.sketch_btns[mode] = btn
 
+        # 复制草稿图 URL 按钮
+        self.copy_sketch_url_btn = QPushButton("📋")
+        self.copy_sketch_url_btn.setFixedSize(fs + 6, fs + 6)
+        self.copy_sketch_url_btn.setToolTip("复制草稿图公网URL（粘贴给外部AI使用）")
+        self.copy_sketch_url_btn.setCursor(Qt.PointingHandCursor)
+        self.copy_sketch_url_btn.setStyleSheet(
+            f"QPushButton {{ border: none; background: transparent; font-size: {fs}px; "
+            f"padding: 0px; }}"
+            f"QPushButton:hover {{ background: #313244; border-radius: 4px; }}"
+        )
+        self.copy_sketch_url_btn.clicked.connect(self._copy_sketch_url)
+        dur_row.addWidget(self.copy_sketch_url_btn)
+
         content.addLayout(dur_row)
 
         # 图片提示词 EN/CN
@@ -466,6 +479,22 @@ class FrameCard(QFrame):
             f"font-size: {self.font_size}px;"
         )
         self.sketch_label.setToolTip("生成/更新运动示意图")
+
+    def _copy_sketch_url(self):
+        """复制草稿图公网URL到剪贴板"""
+        from PySide6.QtWidgets import QApplication
+        url = self.frame_data.get("motion_sketch_url", "")
+        if not url:
+            # 没有公网URL，提示
+            from PySide6.QtWidgets import QToolTip
+            QToolTip.showText(self.copy_sketch_url_btn.mapToGlobal(QPoint(0, -30)),
+                              "该帧没有草稿图公网URL（可能用程序化模式生成）")
+            return
+        clipboard = QApplication.clipboard()
+        clipboard.setText(url)
+        from PySide6.QtWidgets import QToolTip
+        QToolTip.showText(self.copy_sketch_url_btn.mapToGlobal(QPoint(0, -30)),
+                          "已复制草稿图URL到剪贴板")
 
     def _on_duration_spin_changed(self, value: float):
         """帧时长被修改"""

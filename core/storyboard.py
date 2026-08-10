@@ -34,6 +34,7 @@ class StoryboardFrame:
     motion_phase: str = ""            # 动作相位（pre-action / mid-action / post-action / static）
     image_path: Optional[str] = None  # 生成的图片路径
     motion_sketch_path: Optional[str] = None  # 运动示意图路径
+    motion_sketch_url: str = ""               # 运动示意图公网URL（Agnes 返回，供外部使用）
     # --- H3 模式专属字段（标准模式下为空字符串）---
     shot_label: str = ""              # H3 分镜标签，如 [Shot 1]
     cut_timestamp: str = ""           # H3 切点时间戳，如 At 00:03.500,
