@@ -52,6 +52,16 @@ class GenerateScriptWorker(QObject):
         self.direction = direction
         self.use_v2 = use_v2
         self.mode = mode
+        self._cancelled = False
+
+    def cancel(self):
+        """请求取消生成（线程安全，可在主线程调用）"""
+        self._cancelled = True
+
+    def _check_cancelled(self):
+        """检查是否已取消，如已取消则抛异常退出"""
+        if self._cancelled:
+            raise InterruptedError("用户取消生成")
 
     def run(self):
         try:
@@ -62,6 +72,7 @@ class GenerateScriptWorker(QObject):
             )
 
             def on_chunk(text):
+                self._check_cancelled()
                 self.chunk.emit(text)
 
             if self.mode == "h3":
@@ -69,15 +80,19 @@ class GenerateScriptWorker(QObject):
                 self.stage.emit("plan")
 
                 def on_plan_chunk(text):
+                    self._check_cancelled()
                     self.chunk.emit(text)
 
                 def on_stage_local(stage):
+                    self._check_cancelled()
                     self.stage.emit(stage)
 
                 def on_frame_chunk_local(text):
+                    self._check_cancelled()
                     self.chunk.emit(text)
 
                 def on_frame_done(frame_num, frame):
+                    self._check_cancelled()
                     self.frame_done.emit(frame_num, frame)
 
                 sb = generate_storyboard_h3(
@@ -100,15 +115,19 @@ class GenerateScriptWorker(QObject):
                 self.stage.emit("plan")
 
                 def on_plan_chunk(text):
+                    self._check_cancelled()
                     self.chunk.emit(text)
 
                 def on_stage_local(stage):
+                    self._check_cancelled()
                     self.stage.emit(stage)
 
                 def on_frame_chunk_local(text):
+                    self._check_cancelled()
                     self.chunk.emit(text)
 
                 def on_frame_done(frame_num, frame):
+                    self._check_cancelled()
                     self.frame_done.emit(frame_num, frame)
 
                 sb = generate_storyboard_v2(
@@ -142,6 +161,13 @@ class GenerateScriptWorker(QObject):
                 )
             llm.close()
             self.finished.emit(sb)
+        except InterruptedError:
+            # 用户取消，不发 error 信号，发一个特殊的 cancelled 信号
+            try:
+                llm.close()
+            except Exception:
+                pass
+            self.error.emit("__CANCELLED__")
         except Exception as e:
             self.error.emit(str(e))
 
@@ -976,12 +1002,19 @@ class MainWindow(QMainWindow):
         frame_count = self.frame_count_spin.value()
         total_duration = self.duration_spin.value()
 
-        # 禁用按钮
-        self.generate_script_btn.setEnabled(False)
+        # 禁用按钮，生成按钮变为停止按钮
         self.generate_images_btn.setEnabled(False)
         self.export_json_btn.setEnabled(False)
         self.export_md_btn.setEnabled(False)
         self.export_pkg_btn.setEnabled(False)
+        self.generate_script_btn.setText("⏹ 停止生成")
+        self.generate_script_btn.setStyleSheet(
+            "QPushButton { background: #f7768e; color: #0f1117; font-size: 13px; font-weight: bold; border-radius: 6px; border: none; padding: 4px 16px; }"
+            "QPushButton:hover { background: #ff8da1; }"
+        )
+        # 断开生成信号，连接停止信号
+        self.generate_script_btn.clicked.disconnect()
+        self.generate_script_btn.clicked.connect(self._stop_script_generation)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # 不确定进度
         self.status_label.setText("正在生成分镜脚本...")
@@ -1194,7 +1227,7 @@ class MainWindow(QMainWindow):
         self.storyboard_view.set_frames(self.current_frames_data)
 
         # 恢复按钮
-        self.generate_script_btn.setEnabled(True)
+        self._restore_generate_btn()
         self.generate_images_btn.setEnabled(True)
         self.export_json_btn.setEnabled(True)
         self.export_md_btn.setEnabled(True)
@@ -1209,10 +1242,36 @@ class MainWindow(QMainWindow):
         # 自动生成运动示意图队列
         self._start_sketch_queue()
 
+    def _stop_script_generation(self):
+        """用户点击停止按钮，请求取消生成"""
+        if hasattr(self, 'script_worker') and self.script_worker:
+            self.script_worker.cancel()
+            self.status_label.setText("正在停止生成...")
+            self.generate_script_btn.setEnabled(False)
+
+    def _restore_generate_btn(self):
+        """恢复生成按钮到正常状态"""
+        self.generate_script_btn.setText("🎬 生成分镜脚本")
+        self.generate_script_btn.setStyleSheet(
+            "QPushButton { background: #7aa2f7; color: #0f1117; font-size: 13px; font-weight: bold; border-radius: 6px; border: none; padding: 4px 16px; }"
+            "QPushButton:hover { background: #89b0ff; }"
+            "QPushButton:disabled { background: #2a2e3f; color: #4c5375; }"
+        )
+        self.generate_script_btn.setEnabled(True)
+        # 断开停止信号，恢复生成信号
+        try:
+            self.generate_script_btn.clicked.disconnect()
+        except Exception:
+            pass
+        self.generate_script_btn.clicked.connect(self._generate_script)
+
     def _on_script_error(self, error: str):
         """分镜脚本生成失败"""
-        self.generate_script_btn.setEnabled(True)
+        self._restore_generate_btn()
         self.progress_bar.setVisible(False)
+        if error == "__CANCELLED__":
+            self.status_label.setText("已取消生成")
+            return
         self.status_label.setText("生成失败")
         QMessageBox.critical(self, "错误", f"生成分镜脚本失败：\n\n{error}")
 
