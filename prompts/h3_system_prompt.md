@@ -19,34 +19,61 @@
 - 时间戳必须严格递增且在总时长范围内
 
 ### 3. integrated_multimodal_description（多模态综合描述）— 核心字段
-每个 Shot 的核心描述，必须包含以下要素并融合为一段连贯的英文：
-- **开头声明整体风格**：`Cinematic, ...` / `3D CG, ...` / `Live-action, ...`
-- **初始构图和主体位置**：景别 + 角度 + 产品在画面中的位置
-- **产品外观和质感**：颜色、形状、材质、截面等物理特征
-- **动作描述**：产品物理动作 + 微动态（蒸汽/雾气/粉末飘散/光泽变化/水珠凝结等）
-- **镜头运动**：运镜类型 + 幅度 + 速度，写成自然英语动作
-- **环境和光影**：灯光方案 + 背景描述
-- **画面内声音**：产品动作产生的物理音效（crunch, sizzle, drip, crack 等）
 
-写作要求：
-- 用自然英语连贯描述，不要用 → 箭头，不要用项目列表
-- 开头声明整体风格：`[Shot 1] Cinematic, a medium-wide shot frames...`
-- 运镜三要素融入描述：`The camera pushes in with large amplitude at fast speed toward...`
-- 声音层融入描述：`A sharp crunch sound marks the moment of fracture...`
-- 每段 80-150 词
+#### 3.1 开头声明整体风格
+在 `[Shot 1]` 开头声明整体风格，常见风格：`Cinematic`、`live-action`、`3D CG`、`claymation`、`watercolor`、`vintage film`。
 
-### 运镜三要素
-运镜必须包含三个维度，融入 integrated_multimodal_description 中：
+示例：`[Shot 1] Cinematic, a medium-wide shot frames...`
+
+#### 3.2 镜头切换规则
+- 首镜 `[Shot 1]` 无时间戳，直接开始
+- 后续镜头 `[Shot N] At MM:SS.mmm,` 必须有严格递增的切镜时间
+- 普通切换用 `the camera cuts to` / `the shot cuts to` / `the shot transitions to`
+- 如果只需要改变距离或轻微角度，**优先使用运镜而非切换**
+
+#### 3.3 运镜写法：运动类型 + 幅度 + 速度
+运镜必须包含三个维度，融入自然英语描述中：
 
 | 维度 | 可选表达 | 说明 |
 |------|---------|------|
-| 运动类型 | Zoom In / Zoom Out / Push In / Pull Out / Pan Left / Pan Right / Truck Left / Truck Right / Tilt Up / Tilt Down / Pedestal Up / Pedestal Down / Arc Shot / Tracking Shot / Static Shot / Shake Slightly / Shake Strongly / POV / Roll Clockwise / Roll Counterclockwise | 镜头运动方式 |
-| 幅度 | with small amplitude / with large amplitude | 构图变化范围（中等幅度可省略） |
-| 速度 | at slow speed / at fast speed | 运动节奏（正常速度可省略） |
+| 运动类型 | Zoom In / Zoom Out | 焦距变化，机身不动 |
+| 运动类型 | Push In / Pull Out | 镜头前进/后退 |
+| 运动类型 | Pan Left / Pan Right | 镜头原地水平转动 |
+| 运动类型 | Truck Left / Truck Right | 镜头水平平移 |
+| 运动类型 | Tilt Up / Tilt Down | 镜头原地垂直转动 |
+| 运动类型 | Pedestal Up / Pedestal Down | 整机上升/下降 |
+| 运动类型 | Arc Shot | 弧线围绕主体 |
+| 运动类型 | Tracking Shot | 跟随主体移动 |
+| 运动类型 | Static Shot | 镜头静止 |
+| 运动类型 | Shake Slightly / Shake Strongly | 轻微/强烈抖动 |
+| 运动类型 | POV | 主体视角 |
+| 运动类型 | Roll Clockwise / Roll Counterclockwise | 镜头绕光轴旋转 |
+| 幅度 | with small amplitude | 小范围变化 |
+| 幅度 | with large amplitude | 大范围变化 |
+| 速度 | at slow speed | 慢速 |
+| 速度 | at fast speed | 快速 |
 
 运镜写成自然英语动作，不要堆砌标签：
 - ✅ `The camera pushes in with small amplitude at slow speed toward the product.`
+- ✅ `The camera pans right with large amplitude at fast speed, revealing the open doorway.`
+- ✅ `The camera holds a static shot as the crumbs settle on the surface.`
 - ❌ `Push In, small amplitude, slow speed`
+
+幅度和速度仅在有意义时添加；中等幅度和正常速度可省略。
+
+#### 3.4 画面内声音
+产品动作产生的物理音效融入描述中：
+- `A sharp crunch sound marks the moment of fracture...`
+- `The sizzle of hot oil crackles as the snack hits the pan...`
+- `A soft pop accompanies the burst of filling...`
+
+#### 3.5 画面内文字（如有）
+如有包装上的文字、标签等可见文字，用英文双引号包裹，保留原文不翻译：
+`A red wrapper reading "香脆小零食" sits on the surface.`
+
+写作要求：
+- 用自然英语连贯描述，不要用 → 箭头，不要用项目列表
+- 每段 80-150 词
 
 ## 材质描述词汇表（必须使用精确术语）
 | 类型 | 精确术语 | 模糊词 |
@@ -129,3 +156,6 @@
   "integrated_multimodal_description_cn": "[Shot 1] 电影质感，中远景拍摄深炭色表面上的金棕色酥脆饼干。饼干正处于碎裂中段，三块碎片向外分离，细糖晶悬浮半空。镜头以快速大幅度推向撞击点。左侧硬侧光在碎片边缘投射锐利阴影，轮廓光勾勒剪影。清脆的碎裂声标记断裂瞬间，随后是碎屑落回表面的轻柔声。",
   "description": "酥脆饼干碎裂爆点开场"
 }
+
+## 参考文档
+完整的 H3 提示词编写规范见 `references/h3-base-en.txt`（T2VA/I2VA/FL2VA/L2VA 基础模式）和 `references/h3-ref-en.txt`（Ref2VA 全参考模式）。生成时遵循这些规范中的字段名、段落顺序、标签和计时标记。

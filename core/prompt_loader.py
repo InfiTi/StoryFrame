@@ -746,22 +746,46 @@ def _load_few_shot(product_texture: str = "", max_items: int = 3) -> str:
 def get_h3_system_prompt(product_texture: str = "") -> str:
     """获取 H3 模式的系统提示词
 
-    H3 模式沿用现有模块化机制（core.md + texture_*.md + camera_motion.md），
-    但输出改为 H3 规范结构（[Shot N] + 切点时间戳 + 运镜三要素 + 多模态描述 + 全片音频）。
-    如果 h3_system_prompt.md 存在则直接使用（已内置全部规范），
-    否则回退到模块化组装 + H3 输出规范附录。
+    优先使用 h3_system_prompt.md，并注入 references/h3-base-en.txt 官方规范。
     """
-    # 优先使用独立的 H3 系统提示词文件
     h3_prompt = _load_template("h3_system_prompt")
     if h3_prompt:
+        # 注入官方 H3 提示词编写规范
+        base_ref = (PROMPTS_DIR / "references" / "h3-base-en.txt")
+        if base_ref.exists():
+            base_content = base_ref.read_text(encoding="utf-8")
+            # 截取关键章节，避免 token 过多
+            # 保留：运镜三要素表、shot 格式、声音写法、案例
+            import re
+            # 提取 §4.3 到 §4.7 + §5 Cases
+            sections = []
+            # 运镜表和写法
+            cam_match = re.search(r'### 4\.3.*?(?=### 4\.[4567])', base_content, re.DOTALL)
+            if cam_match:
+                sections.append("### 运镜规范（来自 H3 官方指南）\n" + cam_match.group())
+            # shot 格式
+            shot_match = re.search(r'### 4\.2.*?(?=### 4\.3)', base_content, re.DOTALL)
+            if shot_match:
+                sections.append("### 镜头切换规范（来自 H3 官方指南）\n" + shot_match.group())
+            # 声音写法
+            sound_match = re.search(r'### 4\.[67].*?(?=## 5\.)', base_content, re.DOTALL)
+            if sound_match:
+                sections.append("### 声音写法规范（来自 H3 官方指南）\n" + sound_match.group())
+            # 案例
+            case_match = re.search(r'## 5\..*', base_content, re.DOTALL)
+            if case_match:
+                sections.append("### 官方案例（来自 H3 官方指南）\n" + case_match.group())
+
+            if sections:
+                h3_prompt += "\n\n---\n## H3 官方提示词编写规范参考\n\n" + "\n\n".join(sections)
+
         # 追加 few-shot 示例
         few_shot = _load_few_shot(product_texture)
         if few_shot:
             h3_prompt += few_shot
         return h3_prompt
 
-    # 回退：使用 h3_system_prompt.md（已包含完整 H3 规范）
-    # 如果连模板文件都不存在，返回最基本的 H3 规范
+    # 最小回退
     return """你是一个专业的零食带货短视频分镜导演，专门为 MiniMax H3 视频生成模型编写提示词。
 
 ## 每帧输出字段
