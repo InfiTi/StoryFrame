@@ -319,20 +319,23 @@ class FrameCard(QFrame):
 
         content.addLayout(dur_row)
 
-        # 图片提示词 EN/CN
-        self._add_field(content, "图片提示词",
-                        self.frame_data.get("image_prompt", ""),
-                        self.frame_data.get("image_prompt_cn", ""))
+        # 图片提示词 EN/CN（空则不显示）
+        ip_en = self.frame_data.get("image_prompt", "")
+        ip_cn = self.frame_data.get("image_prompt_cn", "")
+        if ip_en or ip_cn:
+            self._add_field(content, "图片提示词", ip_en, ip_cn)
 
-        # 镜头运动 EN/CN（短字段，同行）
-        self._add_short_field(content, "镜头运动",
-                              self.frame_data.get("camera_motion", ""),
-                              self.frame_data.get("camera_motion_cn", ""))
+        # 镜头运动 EN/CN（短字段，同行，空则不显示）
+        cm_en = self.frame_data.get("camera_motion", "")
+        cm_cn = self.frame_data.get("camera_motion_cn", "")
+        if cm_en or cm_cn:
+            self._add_short_field(content, "镜头运动", cm_en, cm_cn)
 
-        # 画面动态 EN/CN（短字段，同行）
-        self._add_short_field(content, "画面动态",
-                              self.frame_data.get("motion_hint", ""),
-                              self.frame_data.get("motion_hint_cn", ""))
+        # 画面动态 EN/CN（短字段，同行，空则不显示）
+        mh_en = self.frame_data.get("motion_hint", "")
+        mh_cn = self.frame_data.get("motion_hint_cn", "")
+        if mh_en or mh_cn:
+            self._add_short_field(content, "画面动态", mh_en, mh_cn)
 
         # H3 多模态综合描述（空则不显示）
         imd_en = self.frame_data.get("integrated_multimodal_description", "")

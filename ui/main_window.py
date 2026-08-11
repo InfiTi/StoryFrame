@@ -75,8 +75,8 @@ class GenerateScriptWorker(QObject):
                 self._check_cancelled()
                 self.chunk.emit(text)
 
-            if self.mode == "h3":
-                # H3 模式：叙事优先的两步生成
+            if self.mode in ("h3", "h3_director"):
+                # H3 模式：叙事优先的两步生成（普通/导演台共用生成逻辑）
                 self.stage.emit("plan")
 
                 def on_plan_chunk(text):
@@ -357,15 +357,20 @@ class MainWindow(QMainWindow):
 
         toolbar.addStretch()
 
-        # 生成模式切换（标准 / H3）
+        # 生成模式切换（标准 / H3 普通 / H3 导演台）
         mode_label = QLabel("🎬 模式：")
         mode_label.setStyleSheet("color: #565f89; font-size: 12px;")
         toolbar.addWidget(mode_label)
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("标准模式", "standard")
-        self.mode_combo.addItem("H3 模式", "h3")
-        self.mode_combo.setFixedWidth(110)
-        self.mode_combo.setToolTip("标准模式：预设驱动，字段独立填写\nH3 模式：叙事驱动，一体化多模态描述（MiniMax H3 规范）")
+        self.mode_combo.addItem("H3 普通", "h3")
+        self.mode_combo.addItem("H3 导演台", "h3_director")
+        self.mode_combo.setFixedWidth(130)
+        self.mode_combo.setToolTip(
+            "标准模式：预设驱动，字段独立填写\n"
+            "H3 普通：叙事驱动，生成 H3 原生多模态描述提示词\n"
+            "H3 导演台：H3 提示词 + 导演台文本格式（可直接粘贴到 ComfyUI H3 导演台）"
+        )
         toolbar.addWidget(self.mode_combo)
 
         toolbar.addSpacing(8)
@@ -652,7 +657,7 @@ class MainWindow(QMainWindow):
         self.doubao_video_btn.clicked.connect(lambda: self._show_doubao_menu("video"))
         bottom_bar.addWidget(self.doubao_video_btn)
 
-        # H3 提示词按钮（点击弹出中文/英文选择）
+        # H3 提示词按钮（点击弹出格式+语言选择）
         self.h3_prompt_btn = QPushButton("🎙️ H3提示词")
         self.h3_prompt_btn.setFixedHeight(30)
         self.h3_prompt_btn.setStyleSheet(
@@ -1406,7 +1411,7 @@ class MainWindow(QMainWindow):
         self.status_label.setText(f"已复制豆包{label}提示词（{lang_label} {frame_count} 帧）")
 
     def _show_h3_menu(self):
-        """点击 H3 按钮时弹出中文/英文选择菜单"""
+        """点击 H3 按钮时弹出格式+语言选择菜单"""
         if not self.current_frames_data:
             self.status_label.setText("请先生成分镜脚本")
             return
@@ -1415,14 +1420,27 @@ class MainWindow(QMainWindow):
         btn = self.h3_prompt_btn
         menu = QMenu(self)
         menu.setStyleSheet("QMenu { background: #1a1b26; color: #c0caf5; border: 1px solid #2a2e42; padding: 4px; } QMenu::item { padding: 4px 24px; border-radius: 4px; } QMenu::item:selected { background: #283457; }")
-        act_cn = menu.addAction("🇨🇳 中文")
-        act_en = menu.addAction("🇬🇧 英文")
-        act_cn.triggered.connect(lambda: self._copy_h3_prompt("cn"))
-        act_en.triggered.connect(lambda: self._copy_h3_prompt("en"))
+
+        # 根据当前模式预选格式
+        current_mode = self.mode_combo.currentData() or "standard"
+        default_fmt = "director" if current_mode == "h3_director" else "plain"
+
+        # 格式子菜单：普通提示词
+        act_plain_cn = menu.addAction("📄 普通提示词（中文）")
+        act_plain_en = menu.addAction("📄 普通提示词（英文）")
+        menu.addSeparator()
+        act_dir_cn = menu.addAction("🎬 导演台脚本（中文）")
+        act_dir_en = menu.addAction("🎬 导演台脚本（英文）")
+
+        act_plain_cn.triggered.connect(lambda: self._copy_h3_prompt("cn", "plain"))
+        act_plain_en.triggered.connect(lambda: self._copy_h3_prompt("en", "plain"))
+        act_dir_cn.triggered.connect(lambda: self._copy_h3_prompt("cn", "director"))
+        act_dir_en.triggered.connect(lambda: self._copy_h3_prompt("en", "director"))
+
         pos = btn.mapToGlobal(QPoint(0, btn.height()))
         menu.exec(pos)
 
-    def _copy_h3_prompt(self, lang: str):
+    def _copy_h3_prompt(self, lang: str, fmt: str = "plain"):
         """复制 H3 提示词到剪贴板"""
         if not self.current_frames_data:
             return
@@ -1430,13 +1448,14 @@ class MainWindow(QMainWindow):
         frame_count = len(frames)
 
         from core.prompt_loader import get_h3_copy_prompt
-        text = get_h3_copy_prompt(frames, frame_count, lang=lang)
+        text = get_h3_copy_prompt(frames, frame_count, lang=lang, fmt=fmt)
         if not text:
             return
 
         QApplication.clipboard().setText(text)
         lang_label = "中文" if lang == "cn" else "英文"
-        self.status_label.setText(f"已复制 H3 提示词（{lang_label} {frame_count} 帧）")
+        fmt_label = "导演台脚本" if fmt == "director" else "普通提示词"
+        self.status_label.setText(f"已复制 H3 {fmt_label}（{lang_label} {frame_count} 帧）")
 
     def _get_product_summary(self) -> str:
         """获取商品摘要信息"""
@@ -1956,19 +1975,33 @@ class MainWindow(QMainWindow):
             sketch_url = frame_data.get("motion_sketch_url", "") or ""
 
         # 构建视频提示词
-        video_prompt = frame_data.get("video_prompt", "") or frame_data.get("video_prompt_cn", "")
+        # 优先级：H3 integrated_multimodal_description > video_prompt > fallback 拼接
+        video_prompt = (
+            frame_data.get("integrated_multimodal_description", "")
+            or frame_data.get("video_prompt", "")
+            or frame_data.get("video_prompt_cn", "")
+        )
         if not video_prompt:
             motion = frame_data.get("motion_hint", "")
             camera = frame_data.get("camera_motion", "")
             desc = frame_data.get("description", "")
-            video_prompt = f"{desc}. Camera: {camera}. Motion: {motion}."
+            imd_cn = frame_data.get("integrated_multimodal_description_cn", "")
+            # H3 模式下用中文多模态描述，标准模式用旧字段拼接
+            if imd_cn:
+                video_prompt = imd_cn
+            elif desc or camera or motion:
+                video_prompt = f"{desc}. Camera: {camera}. Motion: {motion}."
 
         if not video_prompt:
             QMessageBox.warning(self, "无提示词", "该帧没有视频提示词，无法生成")
             return
 
         # 图片提示词（图生视频模式用）
-        image_prompt = frame_data.get("image_prompt", "") or frame_data.get("image_prompt_cn", "")
+        image_prompt = (
+            frame_data.get("image_prompt", "")
+            or frame_data.get("image_prompt_cn", "")
+            or frame_data.get("integrated_multimodal_description_cn", "")
+        )
 
         # 输出路径
         product_name = self.current_storyboard.product_name if self.current_storyboard else "output"

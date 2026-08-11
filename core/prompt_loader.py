@@ -554,6 +554,13 @@ def get_user_prompt(
 
 # ========== 豆包提示词 ==========
 
+def _pick_imd(f: dict, lang: str = "cn") -> str:
+    """从帧数据中取 H3 多模态描述"""
+    if lang == "en":
+        return f.get("integrated_multimodal_description", "")
+    return f.get("integrated_multimodal_description_cn", f.get("integrated_multimodal_description", ""))
+
+
 def get_doubao_image_prompt(
     category: str,
     frames: list,
@@ -576,9 +583,14 @@ def get_doubao_image_prompt(
         block = f"### 第 {frame_num} 帧（{duration:.1f}s）\n"
         block += f"画面描述：{f.get('description', '—')}\n"
         if lang == "en":
-            prompt = f.get("image_prompt", f.get("image_prompt_cn", "—"))
+            prompt = f.get("image_prompt", f.get("image_prompt_cn", ""))
         else:
-            prompt = f.get("image_prompt_cn", f.get("image_prompt", "—"))
+            prompt = f.get("image_prompt_cn", f.get("image_prompt", ""))
+        # H3 模式 fallback：用多模态描述
+        if not prompt:
+            prompt = _pick_imd(f, lang)
+        if not prompt:
+            prompt = "—"
         block += f"图片提示词：{prompt}"
         frame_lines.append(block)
 
@@ -639,10 +651,14 @@ def get_doubao_video_prompt(
         if video_prompt_text:
             block += video_prompt_text
         else:
-            # fallback：用 motion_hint + camera_motion 拼凑
-            motion = _pick("motion_hint_cn", "motion_hint", "")
-            camera = _pick("camera_motion_cn", "camera_motion", "")
-            block += f"{motion} 镜头{camera}"
+            # fallback：H3 多模态描述优先，其次用 motion_hint + camera_motion 拼凑
+            imd = _pick("integrated_multimodal_description_cn", "integrated_multimodal_description", "")
+            if imd:
+                block += imd
+            else:
+                motion = _pick("motion_hint_cn", "motion_hint", "")
+                camera = _pick("camera_motion_cn", "camera_motion", "")
+                block += f"{motion} 镜头{camera}" if motion or camera else "—"
         if transition and transition.lower() != "none":
             transition_cn = {"hard cut": "硬切", "whip pan": "甩镜转场", "speed ramp": "变速过渡", "fade": "渐变"}.get(transition.lower(), transition)
             block += f"\n转场：{transition_cn}"
@@ -744,75 +760,26 @@ def get_h3_system_prompt(product_texture: str = "") -> str:
             h3_prompt += few_shot
         return h3_prompt
 
-    # 回退：模块化组装 + 追加 H3 输出规范
-    base = get_system_prompt(product_texture=product_texture)
-    h3_suffix = """
+    # 回退：使用 h3_system_prompt.md（已包含完整 H3 规范）
+    # 如果连模板文件都不存在，返回最基本的 H3 规范
+    return """你是一个专业的零食带货短视频分镜导演，专门为 MiniMax H3 视频生成模型编写提示词。
 
----
-
-## H3 输出规范（覆盖上述输出格式）
-
-每个分镜必须包含以下 H3 规范字段：
-
-### shot_label
-格式：`[Shot N]`，N 从 1 开始递增
-
-### cut_timestamp
-- 第 1 帧：无时间戳（`[Shot 1]` 直接开始）
-- 第 2+ 帧：`At MM:SS.mmm,` 格式，如 `At 00:03.500,`
-- 时间戳必须严格递增且在总时长范围内
-
-### camera_motion（运镜三要素）
-运镜必须包含三个维度：运动类型 + 幅度 + 速度
-- 运动类型：Zoom In / Zoom Out / Push In / Pull Out / Pan Left / Pan Right / Truck Left / Truck Right / Tilt Up / Tilt Down / Pedestal Up / Pedestal Down / Arc Shot / Tracking Shot / Static Shot / Shake Slightly / Shake Strongly / POV / Roll Clockwise / Roll Counterclockwise
-- 幅度：with small amplitude / with large amplitude（中等可省略）
-- 速度：at slow speed / at fast speed（正常可省略）
-运镜写成自然英语动作，不要堆砌标签
-
-### integrated_multimodal_description（多模态综合描述）
-每个 Shot 的核心描述，包含：
-- 整体风格（Cinematic / live-action / 3D CG 等）
-- 初始构图和主体位置
-- 产品外观和质感
-- 动作描述（产品物理动作 + 微动态）
-- 镜头运动
-- 环境和光影
-- 画面内声音（产品动作产生的物理音效）
-
-### overall_soundscape（全片环境音）
-1-4 句英语，总结全片的环境音和物理音效
-
-### non_diegetic_music（背景音乐）
-1-3 句英语描述 BGM，无 BGM 时填 N/A
-
-## H3 输出字段
-- frame: 帧序号（从1开始）
-- shot_label: H3 分镜标签
-- cut_timestamp: 切点时间戳
-- duration: 该帧持续秒数
+## 每帧输出字段
+- frame: 帧序号
+- shot_label: [Shot N]
+- cut_timestamp: 第1帧为空，后续帧 At MM:SS.mmm,
+- duration: 持续秒数
 - motion_phase: 动作相位
-- image_prompt: 英文生图提示词（60-100词）
-- image_prompt_cn: 中文翻译
-- camera_motion: 英文运镜描述（H3 三要素格式）
-- camera_motion_cn: 中文运镜描述
-- motion_hint: 英文产品动态（25-50词）
-- motion_hint_cn: 中文产品动态
-- integrated_multimodal_description: 英文多模态描述（80-150词）
-- integrated_multimodal_description_cn: 中文多模态描述
-- transition: 过渡方式
-- video_prompt: 英文视频描述（40-70词）
-- video_prompt_cn: 中文视频描述
-- description: 中文简述（15-25字）
+- integrated_multimodal_description: 英文多模态描述（画面+动作+运镜+声音，80-150词）
+- integrated_multimodal_description_cn: 中文翻译
+- description: 中文简述
 
-## 全片输出字段（附加在 JSON 数组末尾）
-最后一个对象包含全局音频字段：
-- overall_soundscape: 英文全片环境音
-- non_diegetic_music: 英文背景音乐
+## 全片输出字段（JSON 数组最后一个对象）
+- overall_soundscape: 全片环境音
+- non_diegetic_music: 背景音乐
 
-## 输出格式
-直接输出 JSON 数组，前 N 个对象是帧数据，最后 1 个对象是全局音频数据。
+直接输出 JSON 数组，前 N 个对象是帧数据，最后 1 个是全局音频。
 """
-    return base + h3_suffix
 
 
 def get_h3_user_prompt(
@@ -869,15 +836,22 @@ def get_h3_copy_prompt(
     frames: list,
     frame_count: int,
     lang: str = "cn",
+    fmt: str = "plain",
 ) -> str:
-    """从已生成的帧数据构建 H3 复制提示词文本
+    """从已生成的帧数据构建 H3 提示词文本
 
     lang: "cn" 用中文字段，"en" 用英文字段
-    输出为纯文本格式，每帧一段，末尾附全片音频字段。
+    fmt: "plain" = H3 普通提示词（纯文本，带标注）
+         "director" = H3 导演台脚本格式（[Shot N] At MM:SS.mmm, ... 连续文本）
     """
     if not frames:
         return ""
 
+    # 导演台格式：连续文本，H3 原生 [Shot N] At 时间戳格式
+    if fmt == "director":
+        return _build_director_script(frames, lang)
+
+    # 普通格式：带标注的纯文本
     def _pick(cn_key: str, en_key: str, default=""):
         if lang == "en":
             return f.get(en_key, f.get(cn_key, default))
@@ -888,7 +862,6 @@ def get_h3_copy_prompt(
         shot_label = f.get("shot_label", f"[Shot {i+1}]")
         cut_ts = f.get("cut_timestamp", "")
         duration = f.get("duration", 0)
-        motion_phase = f.get("motion_phase", "static")
 
         # 头部：[Shot N] + 时间戳
         header = shot_label
@@ -901,34 +874,8 @@ def get_h3_copy_prompt(
         # 多模态描述（核心）
         imd = _pick("integrated_multimodal_description_cn", "integrated_multimodal_description")
         if imd:
-            lines.append(f"多模态描述: {imd}")
+            lines.append(imd)
             lines.append("")
-
-        # 运镜
-        camera = _pick("camera_motion_cn", "camera_motion")
-        if camera:
-            lines.append(f"运镜: {camera}")
-
-        # 图片提示词
-        img = _pick("image_prompt_cn", "image_prompt")
-        if img:
-            lines.append(f"画面: {img}")
-
-        # 产品动态
-        motion = _pick("motion_hint_cn", "motion_hint")
-        if motion:
-            lines.append(f"动态: {motion}")
-
-        # 视频提示词
-        video = _pick("video_prompt_cn", "video_prompt")
-        if video:
-            lines.append(f"视频: {video}")
-
-        # 过渡
-        transition = f.get("transition", "")
-        if transition and transition.lower() != "none":
-            trans_cn = {"hard cut": "硬切", "whip pan": "甩镜转场", "speed ramp": "变速过渡", "fade": "渐变"}.get(transition.lower(), transition)
-            lines.append(f"转场: {trans_cn}")
 
         # 描述
         desc = f.get("description", "")
@@ -939,24 +886,83 @@ def get_h3_copy_prompt(
         lines.append("---")
         lines.append("")
 
-    # 全片音频字段
-    last = frames[-1] if frames else {}
-    soundscape = last.get("overall_soundscape", "")
-    music = last.get("non_diegetic_music", "")
+    # 全片音频字段（可能在任意帧中，优先取最后一个非空的）
+    soundscape = ""
+    music = ""
+    for f in frames:
+        sc = f.get("overall_soundscape", "")
+        if sc:
+            soundscape = sc
+        mu = f.get("non_diegetic_music", "")
+        if mu:
+            music = mu
 
     if soundscape or music:
         lines.append("[全片音频]")
         lines.append("")
         if soundscape:
-            lines.append(f"环境音: {soundscape}")
+            lines.append(f"overall_soundscape: {soundscape}")
         if music:
-            lines.append(f"背景音乐: {music}")
+            lines.append(f"non_diegetic_music: {music}")
     else:
-        # 如果帧数据中没有音频字段（非 H3 生成），提示
         lines.append("[全片音频]")
         lines.append("")
         lines.append("环境音: （需使用 H3 模式生成）")
         lines.append("背景音乐: （需使用 H3 模式生成）")
+
+    return "\n".join(lines)
+
+
+def _build_director_script(frames: list, lang: str = "en") -> str:
+    """构建导演台文本界面脚本格式
+
+    输出格式（导演台 parseOfficialScript 兼容）：
+    [Shot 1] Cinematic, ...
+    [Shot 2] At 00:03.500, ...
+    ...
+
+    overall_soundscape: ...
+    non_diegetic_music: ...
+    """
+    lines = []
+    for i, f in enumerate(frames):
+        shot_label = f.get("shot_label", f"[Shot {i+1}]")
+        cut_ts = f.get("cut_timestamp", "")
+
+        if lang == "en":
+            imd = f.get("integrated_multimodal_description", "")
+        else:
+            imd = f.get("integrated_multimodal_description_cn", f.get("integrated_multimodal_description", ""))
+
+        # 导演台格式：[Shot N] + 时间戳(可选) + 空格 + 描述
+        # 如果 imd 已经以 [Shot N] 开头，不再重复
+        if imd and imd.strip().startswith("[Shot"):
+            # imd 已包含 shot_label，直接用
+            lines.append(imd.strip())
+        else:
+            header = shot_label
+            if cut_ts:
+                header += f" {cut_ts}"
+            lines.append(f"{header} {imd}".strip())
+
+    # 空行分隔
+    lines.append("")
+
+    # 全片音频字段（可能在任意帧中，优先取最后一个非空的）
+    soundscape = ""
+    music = ""
+    for f in frames:
+        sc = f.get("overall_soundscape", "")
+        if sc:
+            soundscape = sc
+        mu = f.get("non_diegetic_music", "")
+        if mu:
+            music = mu
+
+    if soundscape:
+        lines.append(f"overall_soundscape: {soundscape}")
+    if music:
+        lines.append(f"non_diegetic_music: {music}")
 
     return "\n".join(lines)
 
@@ -1131,32 +1137,32 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
 
 {prev_section}
 
-## 生成策略（叙事优先）
+## 生成策略
 
-### 第一步：写 integrated_multimodal_description
+### 核心任务：写 integrated_multimodal_description
 写一段 80-150 词的英文叙事，融合以下元素：
+- 开头声明整体风格（Cinematic / 3D CG / Live-action 等）
 - 画面主体：产品在做什么物理动作
-- 镜头运动：推/拉/摇/移/跟，幅度和速度
-- 声音线索：产品动作产生的声音（碎裂声/流淌声/咀嚼声等）
+- 产品质感：颜色、形状、材质、截面等物理特征
+- 镜头运动：推/拉/摇/移/跟，幅度和速度，写成自然英语动作
+- 声音线索：产品动作产生的物理音效（crunch/sizzle/drip 等）
 - 环境氛围：光线/温度/空气感
-- 时间感：动作是瞬时还是持续
+- 构图比例：9:16 竖屏，关键元素在中间 80%
 
-这是本帧的灵魂字段——不是字段拼凑，是一体化叙事。
+这是一体化叙事，不是字段拼凑。
 
-### 第二步：从中派生以下字段
-- image_prompt：从叙事中提取画面描述（60-100 词），末尾加 no text, no words, no logo, no watermark
-- camera_motion：从叙事中提取镜头运动（类型+幅度+速度，自然英语）
-- motion_hint：从叙事中提取画面内动态
-- video_prompt：从叙事中提取视频生成指令（40-70 词自然语言）
-- transition：过渡到下一帧的方式（hard cut / whip pan / speed ramp / fade）
-
-### 第三步：写中文对照
-- image_prompt_cn：image_prompt 的中文翻译（纯中文，无残留英文）
-- camera_motion_cn、motion_hint_cn、video_prompt_cn：对应中文
-
-### 第四步：H3 格式字段
+### 补充字段
+- integrated_multimodal_description_cn：上述描述的纯中文翻译
+- motion_phase：动作相位（pre-action / mid-action / post-action / static）
+- description：中文简述（15-25字）
 - shot_label：[Shot {frame_num}]
 - cut_timestamp：{ts_hint}
+
+## 约束
+- 禁止出现文字、logo、包装文字、标签、水印
+- integrated_multimodal_description_cn 纯中文，禁止残留英文
+- 画面比例 9:16 竖屏，关键元素在中间 80%
+- 直接输出 JSON，不要输出其他内容
 
 ## 输出格式
 输出单个 JSON 对象：
@@ -1166,24 +1172,11 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
   "duration": {duration},
   "shot_label": "[Shot {frame_num}]",
   "cut_timestamp": "",
+  "motion_phase": "mid-action",
   "integrated_multimodal_description": "...",
-  "image_prompt": "...",
-  "image_prompt_cn": "...",
-  "camera_motion": "...",
-  "camera_motion_cn": "...",
-  "motion_hint": "...",
-  "motion_hint_cn": "...",
-  "video_prompt": "...",
-  "video_prompt_cn": "...",
-  "transition": "..."
+  "integrated_multimodal_description_cn": "...",
+  "description": "..."
 }}
 ```
-
-## 约束
-- image_prompt 末尾必须加：no text, no words, no letters, no logo, no watermark, no label
-- image_prompt_cn 纯中文，禁止残留英文单词
-- video_prompt 40-70 词，禁止精确数值（如 0.6s, 270 degrees）
-- 画面比例 9:16 竖屏，关键元素在中间 80%
-- 直接输出 JSON，不要输出其他内容
 """
     return prompt

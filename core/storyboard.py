@@ -21,9 +21,9 @@ class StoryboardFrame:
     """单帧分镜"""
     frame: int                        # 帧序号（从1开始）
     duration: float                   # 该帧时长（秒）
-    image_prompt: str                 # 图片提示词（英文，用于 AI 生图）
-    camera_motion: str                # 镜头运动描述（英文，用于图生视频）
-    motion_hint: str                  # 画面内动态提示（英文，描述产品怎么动）
+    image_prompt: str = ""            # 图片提示词（英文，用于 AI 生图）
+    camera_motion: str = ""           # 镜头运动描述（英文，用于图生视频）
+    motion_hint: str = ""             # 画面内动态提示（英文，描述产品怎么动）
     image_prompt_cn: str = ""         # 图片提示词中文对照
     camera_motion_cn: str = ""        # 镜头运动中文对照
     motion_hint_cn: str = ""          # 画面动态中文对照
@@ -1007,14 +1007,6 @@ def generate_storyboard_h3(
         frame = StoryboardFrame(
             frame=result.get("frame", frame_num),
             duration=result.get("duration", duration),
-            image_prompt=result.get("image_prompt", ""),
-            image_prompt_cn=result.get("image_prompt_cn", ""),
-            camera_motion=result.get("camera_motion", ""),
-            camera_motion_cn=result.get("camera_motion_cn", ""),
-            motion_hint=result.get("motion_hint", ""),
-            motion_hint_cn=result.get("motion_hint_cn", ""),
-            video_prompt=result.get("video_prompt", ""),
-            video_prompt_cn=result.get("video_prompt_cn", ""),
             description=result.get("description", frame_plan.get("narrative_beat", "")),
             transition=result.get("transition", frame_plan["transition"]),
             motion_phase=result.get("motion_phase", "static"),
