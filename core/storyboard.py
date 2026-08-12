@@ -968,7 +968,7 @@ def generate_storyboard_h3(
                 f"[Shot {prev_f.frame}] {prev_f.integrated_multimodal_description or prev_f.description}"
             )
 
-        # H3 frame prompt（作为 user 消息，已含产品信息 + 生成策略）
+        # H3 frame prompt（作为 user 消息，已含产品信息 + plan 约束 + 生成策略）
         frame_user = get_h3_frame_prompt(
             frame_num=frame_num,
             total_frames=total_frames,
@@ -980,6 +980,7 @@ def generate_storyboard_h3(
             product_info=product_info_str,
             prev_frame_summary=prev_summary,
             direction=direction,
+            frame_plan=frame_plan,
         )
 
         messages = [

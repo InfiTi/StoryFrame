@@ -746,39 +746,10 @@ def _load_few_shot(product_texture: str = "", max_items: int = 3) -> str:
 def get_h3_system_prompt(product_texture: str = "") -> str:
     """获取 H3 模式的系统提示词
 
-    优先使用 h3_system_prompt.md，并注入 references/h3-base-en.txt 官方规范。
+    使用 h3_system_prompt.md，已内置 Apple 风格广告方法论 + 质感-动态-运镜联动规则。
     """
     h3_prompt = _load_template("h3_system_prompt")
     if h3_prompt:
-        # 注入官方 H3 提示词编写规范
-        base_ref = (PROMPTS_DIR / "references" / "h3-base-en.txt")
-        if base_ref.exists():
-            base_content = base_ref.read_text(encoding="utf-8")
-            # 截取关键章节，避免 token 过多
-            # 保留：运镜三要素表、shot 格式、声音写法、案例
-            import re
-            # 提取 §4.3 到 §4.7 + §5 Cases
-            sections = []
-            # 运镜表和写法
-            cam_match = re.search(r'### 4\.3.*?(?=### 4\.[4567])', base_content, re.DOTALL)
-            if cam_match:
-                sections.append("### 运镜规范（来自 H3 官方指南）\n" + cam_match.group())
-            # shot 格式
-            shot_match = re.search(r'### 4\.2.*?(?=### 4\.3)', base_content, re.DOTALL)
-            if shot_match:
-                sections.append("### 镜头切换规范（来自 H3 官方指南）\n" + shot_match.group())
-            # 声音写法
-            sound_match = re.search(r'### 4\.[67].*?(?=## 5\.)', base_content, re.DOTALL)
-            if sound_match:
-                sections.append("### 声音写法规范（来自 H3 官方指南）\n" + sound_match.group())
-            # 案例
-            case_match = re.search(r'## 5\..*', base_content, re.DOTALL)
-            if case_match:
-                sections.append("### 官方案例（来自 H3 官方指南）\n" + case_match.group())
-
-            if sections:
-                h3_prompt += "\n\n---\n## H3 官方提示词编写规范参考\n\n" + "\n\n".join(sections)
-
         # 追加 few-shot 示例
         few_shot = _load_few_shot(product_texture)
         if few_shot:
@@ -786,23 +757,7 @@ def get_h3_system_prompt(product_texture: str = "") -> str:
         return h3_prompt
 
     # 最小回退
-    return """你是一个专业的零食带货短视频分镜导演，专门为 MiniMax H3 视频生成模型编写提示词。
-
-## 每帧输出字段
-- frame: 帧序号
-- shot_label: [Shot N]
-- cut_timestamp: 第1帧为空，后续帧 At MM:SS.mmm,
-- duration: 持续秒数
-- motion_phase: 动作相位
-- integrated_multimodal_description: 英文多模态描述（画面+动作+运镜+声音，80-150词）
-- integrated_multimodal_description_cn: 中文翻译
-- description: 中文简述
-
-## 全片输出字段（JSON 数组最后一个对象）
-- overall_soundscape: 全片环境音
-- non_diegetic_music: 背景音乐
-
-直接输出 JSON 数组，前 N 个对象是帧数据，最后 1 个是全局音频。
+    return """你是一个专业的产品广告分镜导演。每帧输出 integrated_multimodal_description（英文多模态描述，含画面+动作+运镜+声音，80-150词）。直接输出 JSON。
 """
 
 
@@ -1057,13 +1012,16 @@ def get_h3_plan_prompt(product_name: str, product_desc: str, selling_points: str
                        product_info: str = "", direction: str = "") -> str:
     """H3 模式 plan 阶段提示词
 
-    H3 plan 不选镜头预设，而是规划叙事弧：
-    1. 输入模式判断（T2VA/I2VA/Ref2VA 等）
-    2. 每帧的叙事节拍（起承转合）
-    3. 过渡方式
+    基于 Apple 风格极简产品广告方法论：
+    1. 选择叙事脊柱（产品发布/特质触达/色彩家族）
+    2. 定义动效语言（过渡由产品元素驱动，一帧一个主动作）
+    3. 每帧锁定运镜（由质感→动态→运镜因果链决定）
     4. 时长分配
     """
-    prompt = f"""你是一个专业的产品短视频分镜导演，精通 H3 提示词写作规范。
+    style_name = template.name if template else ""
+    style_desc = template.description if template else ""
+
+    prompt = f"""你是一个专业的产品广告分镜导演，精通 Apple 风格极简产品广告方法论。
 
 ## 任务
 为产品「{product_name}」规划一个 {frame_count} 帧的短视频分镜方案。
@@ -1077,28 +1035,47 @@ def get_h3_plan_prompt(product_name: str, product_desc: str, selling_points: str
         prompt += f"- 详细信息：{product_info}\n"
     if direction:
         prompt += f"- 视频方向：{direction}\n"
+    if style_name:
+        prompt += f"- 风格模板：{style_name}"
+        if style_desc:
+            prompt += f"（{style_desc}）"
+        prompt += "\n"
 
     prompt += f"""
-## 规划要求
+## 方法论
 
-### 1. 输入模式判断
-根据产品特征和可用素材，确定输入模式：
-- T2VA（纯文本生成视频）
-- I2VA（图片+文本生成视频）
-- Ref2VA（参考图生成视频）
+### Step 1: 选择叙事脊柱
+根据产品类型选择一个叙事脊柱：
+- **产品发布**（默认）：负空间开场 → 主视角建立英雄视图 → 材质/结构细节 → 自然产品动作 → 完整收尾定格
+- **特质触达**：产品静止 → 交互触发 → 特质动作 → 细节放大 → 结果/感受 → 收尾
+- **色彩家族**：主产品单独出现 → 支撑元素轻入 → 色彩顺序形成 → 完整收尾
 
-### 2. 叙事弧规划
-为每帧分配叙事节拍：
-- 第1帧：开场（建立产品视觉印象）
-- 中间帧：发展（展示质感、动作、卖点）
-- 末帧：收束（最终呈现 + 品牌定格感）
+### Step 2: 定义动效语言
+- 过渡由真实产品元素驱动（产品边缘、材质高光、开合旋转动作）
+- 不用无意义白闪、随机光效或随机切换
+- 一帧一个主动作，Secondary 元素延迟出现不抢注意力
+- 开场不是空等，快速揭示一个有吸引力的产品动作或角度
 
-### 3. 时长分配
+### Step 3: 运镜锁定
+根据该帧的产品质感→动态，从联动规则推导运镜：
+- 酥脆碎裂 → Push In + hard stop
+- 糖粉炸开 → Zoom Out + hold
+- 拉丝延展 → Tilt Up + hold
+- 轻压回弹 → Push In + hold
+- 爆浆流出 → Tracking Shot + hold
+- 滴落 → Tilt Down + hold
+- 雾气升腾 → Tilt Up + hold
+- 冷凝水珠 → Push In + hold
+- 产品全貌 → Static Shot
+- 旋转揭示 → Arc Shot
+
+### Step 4: 时长分配
 总时长 {total_duration} 秒，分配到 {frame_count} 帧。
-短帧（0.5-1.0s）适合快切、碎裂、飞溅等瞬时动作。
-长帧（1.5-2.5s）适合拉丝、流淌、渐显等持续动作。
+- 短帧（0.5-1.0s）：快切、碎裂、飞溅等瞬时动作
+- 长帧（1.5-2.5s）：拉丝、流淌、渐显等持续动作
+- 节奏前紧后松：开场爆点用短帧，结尾收稳用长帧
 
-### 4. 过渡方式
+### Step 5: 过渡方式
 为每帧指定过渡到下一帧的方式：
 - hard cut（硬切，适合快节奏）
 - whip pan（甩镜，适合位置/角度切换）
@@ -1114,12 +1091,19 @@ def get_h3_plan_prompt(product_name: str, product_desc: str, selling_points: str
     "duration": 1.0,
     "shot_label": "[Shot 1]",
     "narrative_beat": "开场：产品全貌建立",
-    "input_mode": "I2VA",
+    "product_action": "酥脆饼干碎裂飞溅",
+    "camera_motion": "Push In",
     "transition": "fade",
-    "duration_rationale": "开场需要足够时间建立视觉印象"
+    "duration_rationale": "开场冲击需要短帧快节奏"
   }}
 ]
 ```
+
+字段说明：
+- narrative_beat: 该帧在叙事脊柱中的角色（开场/发展/高潮/收尾）
+- product_action: 该帧产品做什么物理动作（具体、视觉化）
+- camera_motion: 运镜类型（从联动规则推导，不是随意选）
+- transition: 过渡到下一帧的方式
 
 直接输出 JSON 数组，不要输出其他内容。
 """
@@ -1129,21 +1113,46 @@ def get_h3_plan_prompt(product_name: str, product_desc: str, selling_points: str
 def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
                          product_name: str, product_desc: str, selling_points: str,
                          template, product_info: str = "",
-                         prev_frame_summary: str = "", direction: str = "") -> str:
+                         prev_frame_summary: str = "", direction: str = "",
+                         frame_plan: dict = None) -> str:
     """H3 模式逐帧生成提示词
 
-    H3 frame 的核心策略：先写 integrated_multimodal_description，再从中派生其他字段。
+    H3 frame 的核心策略：按 plan 锁定的运镜和产品动作写 integrated_multimodal_description。
     """
     style_name = template.name if template else ""
 
-    # 构建可选信息行（避免 f-string 中包含反斜杠）
-    info_line = "- 详细：" + product_info if product_info else ""
-    direction_line = "- 视频方向：" + direction if direction else ""
-    style_line = "- 风格：" + style_name if style_name else ""
+    # 从 plan 获取约束
+    camera_motion = ""
+    product_action = ""
+    narrative_beat = ""
+    transition = ""
+    if frame_plan:
+        camera_motion = frame_plan.get("camera_motion", "")
+        product_action = frame_plan.get("product_action", "")
+        narrative_beat = frame_plan.get("narrative_beat", "")
+        transition = frame_plan.get("transition", "")
+
+    # 构建可选信息行
+    info_line = f"- 详细：{product_info}" if product_info else ""
+    direction_line = f"- 视频方向：{direction}" if direction else ""
+    style_line = f"- 风格：{style_name}" if style_name else ""
     prev_section = ""
     if prev_frame_summary:
         prev_section = "## 前帧摘要\n" + prev_frame_summary
     ts_hint = "（第1帧留空）" if frame_num == 1 else "At 00:XX.XXX,（根据总时长推算）"
+
+    # plan 约束段
+    plan_section = ""
+    if camera_motion or product_action or narrative_beat:
+        plan_section = "## 本帧 plan 约束（必须遵守）\n"
+        if narrative_beat:
+            plan_section += f"- 叙事节拍：{narrative_beat}\n"
+        if product_action:
+            plan_section += f"- 产品动作：{product_action}\n"
+        if camera_motion:
+            plan_section += f"- 运镜类型：{camera_motion}（必须使用此运镜，写进描述中）\n"
+        if transition and transition.lower() != "none":
+            plan_section += f"- 过渡到下一帧：{transition}\n"
 
     prompt = f"""你是 H3 提示词专家。请为第 {frame_num} 帧生成完整的提示词。
 
@@ -1159,6 +1168,7 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
 {direction_line}
 {style_line}
 
+{plan_section}
 {prev_section}
 
 ## 生成策略
@@ -1166,9 +1176,9 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
 ### 核心任务：写 integrated_multimodal_description
 写一段 80-150 词的英文叙事，融合以下元素：
 - 开头声明整体风格（Cinematic / 3D CG / Live-action 等）
-- 画面主体：产品在做什么物理动作
+- 画面主体：产品在做什么物理动作（按 plan 指定的 product_action）
 - 产品质感：颜色、形状、材质、截面等物理特征
-- 镜头运动：推/拉/摇/移/跟，幅度和速度，写成自然英语动作
+- 镜头运动：必须使用 plan 指定的 camera_motion 类型，写成自然英语动作（含幅度和速度）
 - 声音线索：产品动作产生的物理音效（crunch/sizzle/drip 等）
 - 环境氛围：光线/温度/空气感
 - 构图比例：9:16 竖屏，关键元素在中间 80%
