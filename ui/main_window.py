@@ -1659,6 +1659,11 @@ class MainWindow(QMainWindow):
         if not self.current_storyboard:
             return
 
+        # 防重入：如果正在生成中，忽略新请求
+        if hasattr(self, '_current_image_thread') and self._current_image_thread and self._current_image_thread.isRunning():
+            self.status_label.setText("正在生成图片中，请稍候...")
+            return
+
         # 参考图：优先用参考图栏导入的，否则对支持的 provider 弹选择
         provider = self.config["image"].get("provider", "")
         denoise = self.config["image"].get("denoise", 0.6)
@@ -1710,11 +1715,16 @@ class MainWindow(QMainWindow):
             f"正在生成第 {idx + 1}/{self._image_total} 帧..."
         )
 
+        # H3 模式下 image_prompt 为空，用 integrated_multimodal_description 作 fallback
+        prompt = frame.image_prompt
+        if not prompt and frame.integrated_multimodal_description:
+            prompt = frame.integrated_multimodal_description
+
         thread = QThread()
         worker = GenerateImageWorker(
             image_config=self.config["image"],
             frame_index=idx,
-            prompt=frame.image_prompt,
+            prompt=prompt,
             output_path=output_path,
             reference_image=self._image_reference,
             denoise=self._image_denoise,
