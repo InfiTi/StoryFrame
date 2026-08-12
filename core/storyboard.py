@@ -937,6 +937,8 @@ def generate_storyboard_h3(
             "frame": frame_num,
             "duration": duration,
             "narrative_beat": p.get("narrative_beat", ""),
+            "product_action": p.get("product_action", ""),
+            "camera_motion": p.get("camera_motion", ""),
             "input_mode": p.get("input_mode", "I2VA"),
             "transition": transition,
             "duration_rationale": p.get("duration_rationale", ""),

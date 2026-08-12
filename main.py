@@ -41,11 +41,13 @@ def main():
     import traceback
     import faulthandler
 
-    # 启用 faulthandler 捕获段错误
-    faulthandler.enable()
+    # 启用 faulthandler 捕获段错误，输出到文件
+    fault_log = open("crash.log", "w", encoding="utf-8")
+    faulthandler.enable(fault_log)
 
     def exception_hook(exc_type, exc_value, exc_tb):
-        traceback.print_exception(exc_type, exc_value, exc_tb)
+        traceback.print_exception(exc_type, exc_value, exc_tb, file=fault_log)
+        fault_log.flush()
         from PySide6.QtWidgets import QMessageBox
         msg = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
         QMessageBox.critical(None, "未处理异常", msg)
