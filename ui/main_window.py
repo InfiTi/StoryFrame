@@ -189,34 +189,44 @@ class GenerateImageWorker(QObject):
         self.reference_images = reference_images
 
     def run(self):
-        try:
-            from core.generation_manager import GenerationManager
-            # 构建一个只含 image 配置的 dict
-            cfg = {"image": self.image_config}
-            mgr = GenerationManager(cfg)
-            ok, path_or_url, msg = mgr.generate_image(
-                prompt=self.prompt,
-                output_path=self.output_path,
-                reference_image=self.reference_image,
-                denoise=self.denoise,
-                reference_images=self.reference_images,
-            )
-            mgr.close()
-            if ok:
-                # 从 msg 中提取公网 URL（格式："生成成功（公网URL: xxx）"）
-                image_url = ""
-                if "公网URL:" in msg:
-                    try:
-                        image_url = msg.split("公网URL:")[1].rstrip("）").strip()
-                    except Exception:
-                        pass
-                self.finished.emit(self.frame_index, self.output_path, image_url)
-            else:
+        import time
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                from core.generation_manager import GenerationManager
+                cfg = {"image": self.image_config}
+                mgr = GenerationManager(cfg)
+                ok, path_or_url, msg = mgr.generate_image(
+                    prompt=self.prompt,
+                    output_path=self.output_path,
+                    reference_image=self.reference_image,
+                    denoise=self.denoise,
+                    reference_images=self.reference_images,
+                )
+                mgr.close()
+                if ok:
+                    image_url = ""
+                    if "公网URL:" in msg:
+                        try:
+                            image_url = msg.split("公网URL:")[1].rstrip("）").strip()
+                        except Exception:
+                            pass
+                    self.finished.emit(self.frame_index, self.output_path, image_url)
+                    return
+                # 503/502 等临时错误重试
+                if attempt < max_retries and ("503" in msg or "502" in msg or "429" in msg):
+                    time.sleep(2)
+                    continue
                 self.error.emit(self.frame_index, msg)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            self.error.emit(self.frame_index, str(e))
+                return
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                if attempt < max_retries:
+                    time.sleep(2)
+                    continue
+                self.error.emit(self.frame_index, str(e))
+                return
 
 
 class MotionSketchWorker(QThread):
