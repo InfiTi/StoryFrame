@@ -1660,9 +1660,11 @@ class MainWindow(QMainWindow):
             return
 
         # 防重入：如果正在生成中，忽略新请求
-        if hasattr(self, '_current_image_thread') and self._current_image_thread and self._current_image_thread.isRunning():
+        if getattr(self, '_image_generating', False):
             self.status_label.setText("正在生成图片中，请稍候...")
             return
+
+        self._image_generating = True
 
         # 参考图：优先用参考图栏导入的，否则对支持的 provider 弹选择
         provider = self.config["image"].get("provider", "")
@@ -1873,6 +1875,7 @@ class MainWindow(QMainWindow):
 
     def _finish_image_generation(self):
         """图片生成完毕"""
+        self._image_generating = False
         self.generate_images_btn.setEnabled(True)
         self.generate_single_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
