@@ -60,15 +60,17 @@ _MOTION_KEYWORDS = [
     # splash: 飞溅/喷溅/爆发
     (("splash", "burst", "explod", "erupt", "spray", "squirt",
       "scatter", "fly out", "shoot out", "fan out", "radiate outward",
-      "cascade", "sprinkle", "shower"), "splash"),
-    # stretch: 拉伸/延展/拉丝/剥离
+      "sprinkle", "shower"), "splash"),
+    # stretch: 拉伸/延展/拉丝/剥离/按压回弹
     (("stretch", "pull", "tear", "rip", "elongate", "extend", "peel", "unfold",
       "draw out", "stringy", "pull apart", "strip", "ribbon", "thread",
-      "ooze", "melt", "drip down", "ooze out"), "stretch"),
+      "ooze", "melt", "drip down", "ooze out",
+      "press", "presses", "presses into", "squeeze", "compress",
+      "按压", "压下", "挤压"), "stretch"),
     # drop: 下落/滴落/倾倒
     (("drop", "fall", "plunge", "drip", "pour",
-      "cascade down", "tumble down", "settle", "descend", "sink", "slide down",
-      "roll down"), "drop"),
+      "cascade", "cascade down", "tumble down", "slide down", "roll down",
+      "descends from", "falls from", "cascades from"), "drop"),
     # rotate: 旋转/翻转/滚动
     (("rotat", "spin", "twist", "tumble", "flip", "revolv",
       "roll", "pivot", "swivel", "spiral", "gyrate", "turn over"), "rotate"),
@@ -86,8 +88,8 @@ _SLOW_WORDS = ("slow", "gentle", "gradual", "soft", "slowly", "leisurely", "deli
 def from_frame(frame: dict) -> MotionSketchData:
     """从分镜帧数据（StoryboardFrame.to_dict / 缓存 JSON）提取结构化运动信息。
 
-    采用关键词启发式解析 motion_hint / video_prompt / camera_motion / image_prompt，
-    保证不依赖 LLM 额外输出字段也能工作。
+    优先从 motion_hint / video_prompt / camera_motion 提取（标准模式）；
+    这些字段为空时（H3 模式），从 integrated_multimodal_description 提取。
     """
     frame_num = int(frame.get("frame", 0) or 0)
     motion_hint = str(frame.get("motion_hint", "") or "")
@@ -95,29 +97,53 @@ def from_frame(frame: dict) -> MotionSketchData:
     image_prompt = str(frame.get("image_prompt", "") or "")
     camera = str(frame.get("camera_motion", "") or "")
     description = str(frame.get("description", "") or "")
-    text = f"{motion_hint} {video_prompt}".lower()
-    img_text = image_prompt.lower()
+    imd = str(frame.get("integrated_multimodal_description", "") or "")
+    imd_cn = str(frame.get("integrated_multimodal_description_cn", "") or "")
+
+    # 标准模式字段优先，H3 模式 fallback 到 imd
+    text_raw = f"{motion_hint} {video_prompt}".strip()
+    if not text_raw:
+        text_raw = f"{imd} {imd_cn}"
+    text = text_raw.lower()
+    img_text = (image_prompt or imd or imd_cn).lower()
     cam_text = camera.lower()
+    # H3 模式下 camera 为空，从 imd 提取镜头运动
+    if not cam_text:
+        cam_text = imd.lower()
 
     # 1. 产品形状（只画轮廓示意，不涉及外观）
+    # 用词边界匹配避免 background 等误匹配
+    import re as _re
     shape = "rect"
     for kws, s in _SHAPE_KEYWORDS:
-        if any(k in img_text for k in kws):
+        if any(_re.search(r'\b' + _re.escape(k) + r'\b', img_text) for k in kws):
             shape = s
             break
 
-    # 2. 运动类型
+    # 2. 运动类型（词边界匹配）
+    # 注意："static shot" / "holds still" 是镜头静止，不代表产品不动
     motion_type = "slide"
     for kws, mt in _MOTION_KEYWORDS:
-        if any(k in text for k in kws):
+        if any(_re.search(r'\b' + _re.escape(k) + r'\b', text) for k in kws):
             motion_type = mt
             break
+    # 仅当没有任何运动关键词匹配且明确说产品静止时才设为 static
+    if motion_type == "slide":  # slide 是默认值，可能并非真的 slide
+        if not any(_re.search(r'\b' + _re.escape(k) + r'\b', text) for k in
+                   ("slide", "glide", "drift", "shift", "move across",
+                    "travel", "sweep", "push across", "slide over")):
+            # 没有明确运动关键词，检查是否明确静止
+            if any(_re.search(r'\b' + _re.escape(k) + r'\b', text) for k in
+                   ("completely still", "holds completely still",
+                    "camera holds still", "held still",
+                    "镜头完全静止")):
+                motion_type = "static"
 
-    # 3. 速度
+    # 3. 速度（词边界匹配）
     speed = "medium"
-    if any(k in text for k in _FAST_WORDS):
+    if any(_re.search(r'\b' + _re.escape(k) + r'\b', text) for k in _FAST_WORDS):
         speed = "fast"
-    elif any(k in text for k in _SLOW_WORDS):
+    elif any(_re.search(r'\b' + _re.escape(k) + r'\b', text) for k in _SLOW_WORDS):
         speed = "slow"
 
     # 4. 方向（关键词优先，缺省按运动类型）
@@ -128,18 +154,23 @@ def from_frame(frame: dict) -> MotionSketchData:
         "drop": (0.0, 1.0),
         "rotate": (0.0, 0.0),
         "slide": (1.0, 0.0),
+        "static": (0.0, 0.0),
     }.get(motion_type, (0.0, 0.0))
     dx, dy = default_dir
-    # 方向关键词扩展：覆盖 LLM 实际用词
-    if any(k in text for k in ("left", "backward", "pull back")):
+    # 方向关键词扩展：覆盖 LLM 实际用词 + H3 imd 用词（词边界匹配）
+    if any(_re.search(r'\b' + _re.escape(k) + r'\b', text) for k in ("left", "backward", "pull back", "from the left", "滑入", "左侧")):
         dx = -1
-    elif any(k in text for k in ("right", "forward", "push forward", "push-in")):
+    elif any(_re.search(r'\b' + _re.escape(k) + r'\b', text) for k in ("right", "forward", "push forward", "push-in", "from the right", "右侧")):
         dx = 1
-    if any(k in text for k in ("upward", "upward ", "rise", "ascend", "upward motion")
-           ) or ("up" in text and "cup" not in text and "closeup" not in text):
+    if any(_re.search(r'\b' + _re.escape(k) + r'\b', text) for k in ("upward", "upward ", "rise", "ascend", "upward motion",
+                                "tilts up", "tilt up", "curl upward", "rising",
+                                "向上", "上摇", "升腾")):
         dy = -1
-    elif any(k in text for k in ("downward", "descend", "sink", "settle", "cascade down",
-                                  "tumble down", "slide down", "roll down", "drip down")):
+    elif any(_re.search(r'\b' + _re.escape(k) + r'\b', text) for k in ("downward", "descend", "sink", "settle", "cascade down",
+                                  "tumble down", "slide down", "roll down", "drip down",
+                                  "from above", "descends from", "falls from",
+                                  "pouring", "pour down", "cascades from",
+                                  "向下", "下坐", "滑落")):
         dy = 1
     # radial/lateral/inward/outward 方向标记
     if "radial" in text or "radiate outward" in text or "fan out" in text:
@@ -150,41 +181,51 @@ def from_frame(frame: dict) -> MotionSketchData:
         dx, dy = 0.0, 1.0  # 向内聚拢，用向下示意
     mag = math.hypot(dx, dy)
     direction = (dx / mag, dy / mag) if mag else (0.0, 0.0)
+    # static 运动类型强制方向为零
+    if motion_type == "static":
+        direction = (0.0, 0.0)
 
-    # 5. 粒子效果（关键词扩展覆盖 LLM 实际用词）
+    # 5. 粒子效果（词边界匹配，覆盖 LLM 实际用词 + H3 imd 用词）
     particles: List[str] = []
     if motion_type in ("crumble", "stretch") or any(
-            k in text for k in ("crumb", "frag", "piece", "chip", "shard",
-                                 "flake", "scrap", "bit", "morsel", "crumb")):
+            _re.search(r'\b' + _re.escape(k) + r'\b', text) for k in ("crumb", "frag", "piece", "chip", "shard",
+                                 "flake", "scrap", "bit", "morsel")):
         particles.append("crumbs")
     if motion_type == "splash" or any(
-            k in text for k in ("splash", "water", "liquid", "droplet", "drip",
+            _re.search(r'\b' + _re.escape(k) + r'\b', text) for k in ("splash", "water", "liquid", "droplet", "drip",
                                  "spray", "sprinkle", "shower", "scatter")):
         particles.append("splash")
-    if any(k in text for k in ("dust", "powder", "puff", "cloud",
+    if any(_re.search(r'\b' + _re.escape(k) + r'\b', text) for k in ("dust", "powder", "puff", "cloud",
                                 "scallion", "matcha", "cocoa", "flour", "sugar")):
         particles.append("dust")
-    if any(k in text for k in ("steam", "vapor", "smoke", "mist",
-                                "aroma", "waft", "wisps")):
+    if any(_re.search(r'\b' + _re.escape(k) + r'\b', text) for k in ("steam", "vapor", "smoke", "mist",
+                                "aroma", "waft", "wisps", "wisps of")):
         particles.append("steam")
 
-    # 6. 镜头运动（关键词扩展覆盖 LLM 运镜预设实际用词）
+    # 6. 镜头运动（词边界匹配，pan/tilt 优先于 zoom/push 避免冲突）
     camera_motion = "static"
-    if any(k in cam_text for k in ("zoom", "push", "push-in", "dolly", "macro",
-                                    "close-up", "closeup", "snap zoom", "slow push",
-                                    "rack focus", "pull back", "pull focus")):
-        camera_motion = "zoom_in"
-    elif any(k in cam_text for k in ("pan", "whip pan", "tilt", "sweep",
-                                      "slide across", "lateral")):
+    if any(_re.search(r'\b' + _re.escape(k) + r'\b', cam_text) for k in ("pan", "whip pan", "tilt", "tilts up", "tilt up", "sweep",
+                                      "slide across", "lateral", "上摇", "下摇", "甩镜")):
         camera_motion = "pan_left"
-    elif any(k in cam_text for k in ("orbit", "rotate", "spin", "revolv", "aroun",
+    elif any(_re.search(r'\b' + _re.escape(k) + r'\b', cam_text) for k in ("zoom", "push", "push-in", "pushes in", "dolly", "macro",
+                                    "close-up", "closeup", "snap zoom", "slow push",
+                                    "rack focus", "pull back", "pull focus",
+                                    "推向", "推近")):
+        camera_motion = "zoom_in"
+    elif any(_re.search(r'\b' + _re.escape(k) + r'\b', cam_text) for k in ("orbit", "rotate", "spin", "revolv", "aroun",
                                       "arc shot", "overhead rotation", "circular")):
         camera_motion = "orbit"
 
+    # H3 模式下 description 取 imd 英文摘要（供 AI 草稿图提示词用）
+    # description 字段可能是简单中文描述，imd 更详细
+    imd_summary = imd[:300] if imd else (description or "")
+
     # 7. 主体大小：特写镜头放大
     size = (240, 160)
-    if "macro" in cam_text or "close" in cam_text:
+    if "macro" in cam_text or "close" in cam_text or "close-up" in cam_text or "特写" in cam_text:
         size = (300, 200)
+    elif "medium-wide" in cam_text or "中远景" in cam_text:
+        size = (200, 140)
     elif shape == "round":
         size = (200, 200)
     elif shape == "cylinder":
@@ -199,7 +240,7 @@ def from_frame(frame: dict) -> MotionSketchData:
         motion_speed=speed,
         particles=particles,
         camera_motion=camera_motion,
-        description=description,
+        description=imd_summary,
     )
 
 
@@ -660,7 +701,7 @@ DEFAULT_AI_PROMPT = (
     "a single simple {shape} as the subject, no product detail, no color, "
     "hand-drawn style arrows showing {direction} {motion} at {speed} speed, "
     "particle marks ({particles}) bursting outward, {camera}, "
-    "scene context: {description}, "
+    "scene context: {imd_summary}, "
     "minimal line art, white background, schematic diagram style, "
     "clean composition, no clutter, easy to read"
 )
@@ -685,6 +726,7 @@ _MOTION_NAMES = {
     "stretch": "stretching",
     "drop": "dropping",
     "rotate": "rotating",
+    "static": "stationary",
 }
 _CAMERA_NAMES = {
     "zoom_in": "camera zooming in",
@@ -697,6 +739,11 @@ _DIRECTION_NAMES = {
     "(1,0)": "moving right",
     "(0,-1)": "moving up",
     "(0,1)": "moving down",
+    "(-1,-1)": "moving up-left",
+    "(1,-1)": "moving up-right",
+    "(-1,1)": "moving down-left",
+    "(1,1)": "moving down-right",
+    "(0,0)": "stationary",
 }
 
 
@@ -710,7 +757,10 @@ class _SafeDict(dict):
 def prompt_vars(data: MotionSketchData) -> dict:
     """提示词模板可用的占位符变量"""
     dx, dy = data.motion_direction
-    dir_key = f"({int(dx)},{int(dy)})"
+    # 归一化到 -1/0/1 用于映射
+    ix = int(round(dx))
+    iy = int(round(dy))
+    dir_key = f"({ix},{iy})"
     return {
         "shape": _SHAPE_NAMES.get(data.product_shape, "simple shape"),
         "motion": _MOTION_NAMES.get(data.motion_type, data.motion_type),
@@ -719,6 +769,7 @@ def prompt_vars(data: MotionSketchData) -> dict:
         "particles": "、".join(data.particles) if data.particles else "none",
         "camera": _CAMERA_NAMES.get(data.camera_motion, "static camera"),
         "description": data.description,
+        "imd_summary": data.description,
     }
 
 
