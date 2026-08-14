@@ -870,6 +870,7 @@ class StoryboardView(QWidget):
         new_card.image_clicked.connect(self._on_image_clicked)
         new_card.duration_changed.connect(self._on_duration_changed)
         new_card.regenerate_clicked.connect(self.frame_regenerate)
+        new_card.sketch_clicked.connect(self.sketch_requested)
         # 插入到原来位置
         self.container_layout.insertWidget(layout_index, new_card)
         self.cards[index] = new_card
