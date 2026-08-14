@@ -1103,7 +1103,7 @@ def regenerate_frame(
         prev_ending = _build_frame_state_summary(prev, is_prev=True)
     if frame_index < len(frames) - 1:
         nxt = frames[frame_index + 1]
-        next_starting = _build_frame_state_summary(nxt, is_next=True)
+        next_starting = _build_frame_state_summary(nxt, is_prev=False)
     
     # 构建帧方案（从现有帧提取）
     frame_plan = {
