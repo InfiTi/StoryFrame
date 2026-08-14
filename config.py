@@ -55,6 +55,7 @@ DEFAULT_CONFIG = {
     "storyboard": {
         "frame_count": 5,
         "duration": 15,  # 总时长（秒）
+        "generation_mode": "standard",  # standard | h3 | h3_director
         # 运动示意图（分镜蓝图）：黑白线稿+箭头，喂给视频模型理解运动
         "motion_sketch": {
             "enabled": True,

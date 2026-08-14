@@ -1071,11 +1071,17 @@ def regenerate_frame(
     product_desc: str = "",
     selling_points: str = "",
     on_chunk=None,
+    mode: str = "standard",
+    direction: str = "",
 ) -> StoryboardFrame:
     """重新生成某一帧的提示词
     
+    根据 mode 走对应的提示词路径：
+    - standard: 标准模式（预设驱动，字段独立填写）
+    - h3 / h3_director: H3 模式（叙事驱动，生成 integrated_multimodal_description）
+    
     使用已有的帧上下文（前后帧描述、整体方案）来重新生成单帧，
-    不需要重新走基调步骤。temperature 提高到 0.9 以获得不同创意。
+    不需要重新走 plan 阶段。temperature 提高到 0.9 以获得不同创意。
     """
     frames = storyboard.frames
     if not (0 <= frame_index < len(frames)):
@@ -1086,6 +1092,25 @@ def regenerate_frame(
     duration = old_frame.duration
     description = old_frame.description
     
+    texture_str = _build_texture_str(product_info)
+    
+    # === H3 模式分支 ===
+    if mode in ("h3", "h3_director"):
+        return _regenerate_frame_h3(
+            llm=llm,
+            storyboard=storyboard,
+            frame_index=frame_index,
+            template=template,
+            product_info=product_info,
+            product_name=product_name,
+            product_desc=product_desc,
+            selling_points=selling_points,
+            texture_str=texture_str,
+            direction=direction,
+            on_chunk=on_chunk,
+        )
+    
+    # === 标准模式分支 ===
     # 从现有帧构建 plan_summary（上下文）
     plan_summary_lines = []
     for f in frames:
@@ -1115,7 +1140,6 @@ def regenerate_frame(
         "transition": old_frame.transition or "none",
     }
     
-    texture_str = _build_texture_str(product_info)
     style_words = ", ".join(template.image_style_words)
     camera_words = ", ".join(template.camera_style_words)
     
@@ -1181,4 +1205,106 @@ def regenerate_frame(
         description=result.get("description", description),
         transition=result.get("transition", old_frame.transition or "none"),
         motion_phase=result.get("motion_phase", old_frame.motion_phase or "static"),
+    )
+
+
+def _regenerate_frame_h3(
+    llm: LLMClient,
+    storyboard: Storyboard,
+    frame_index: int,
+    template: StyleTemplate,
+    product_info: Optional[ProductInfo],
+    product_name: str,
+    product_desc: str,
+    selling_points: str,
+    texture_str: str,
+    direction: str,
+    on_chunk=None,
+) -> StoryboardFrame:
+    """H3 模式重新生成单帧"""
+    from .prompt_loader import get_h3_system_prompt, get_h3_frame_prompt
+    
+    frames = storyboard.frames
+    old_frame = frames[frame_index]
+    frame_num = old_frame.frame
+    duration = old_frame.duration
+    
+    product_info_str = (
+        f"名称：{product_name or storyboard.product_name}\n"
+        f"描述：{product_desc or storyboard.product_desc}\n"
+        f"卖点：{selling_points or '美味零食'}\n"
+        f"质感：{texture_str or '未知'}"
+    )
+    
+    # 前帧摘要
+    prev_frame_summary = ""
+    if frame_index > 0:
+        prev_f = frames[frame_index - 1]
+        prev_frame_summary = (
+            f"[Shot {prev_f.frame}] {prev_f.integrated_multimodal_description or prev_f.description}"
+        )
+    
+    # 从现有帧提取 plan 约束
+    frame_plan = {
+        "frame": frame_num,
+        "duration": duration,
+        "narrative_beat": old_frame.description,
+        "product_action": "",
+        "camera_motion": old_frame.camera_motion or "",
+        "transition": old_frame.transition or "none",
+        "input_mode": "I2VA",
+        "duration_rationale": "",
+    }
+    
+    h3_sys = get_h3_system_prompt(product_texture=texture_str)
+    frame_user = get_h3_frame_prompt(
+        frame_num=frame_num,
+        total_frames=len(frames),
+        duration=duration,
+        product_name=product_name or storyboard.product_name,
+        product_desc=product_desc or storyboard.product_desc,
+        selling_points=selling_points,
+        template=template,
+        product_info=product_info_str,
+        prev_frame_summary=prev_frame_summary,
+        direction=direction,
+        frame_plan=frame_plan,
+    )
+    
+    messages = [
+        {"role": "system", "content": h3_sys},
+        {"role": "user", "content": frame_user},
+    ]
+    
+    result = llm.chat_json(messages, temperature=0.9, on_chunk=on_chunk)
+    
+    if isinstance(result, list):
+        result = result[0] if result else {}
+    if not isinstance(result, dict):
+        result = {}
+    
+    # 保存调试文件
+    debug_dir = Path("outputs") / "_debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    debug_file = debug_dir / f"regen_h3_frame_{frame_num}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    with open(debug_file, "w", encoding="utf-8") as f:
+        f.write(json.dumps(result, ensure_ascii=False, indent=2))
+    
+    # 计算 cut_timestamp
+    elapsed = sum(frames[i].duration for i in range(frame_index))
+    if frame_index == 0:
+        cut_ts = ""
+    else:
+        cut_ts = _format_h3_timestamp(elapsed)
+    
+    return StoryboardFrame(
+        frame=result.get("frame", frame_num),
+        duration=result.get("duration", duration),
+        description=result.get("description", old_frame.description),
+        transition=result.get("transition", old_frame.transition or "none"),
+        motion_phase=result.get("motion_phase", old_frame.motion_phase or "static"),
+        shot_label=result.get("shot_label", f"[Shot {frame_num}]"),
+        cut_timestamp=result.get("cut_timestamp", cut_ts) or cut_ts,
+        integrated_multimodal_description=result.get("integrated_multimodal_description", ""),
+        integrated_multimodal_description_cn=result.get("integrated_multimodal_description_cn", ""),
     )

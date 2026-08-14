@@ -267,7 +267,8 @@ class RegenerateFrameWorker(QObject):
     chunk = Signal(str)             # 流式片段
 
     def __init__(self, llm_config, storyboard, frame_index, template,
-                 product_info, product_name, product_desc, selling_points):
+                 product_info, product_name, product_desc, selling_points,
+                 mode="standard", direction=""):
         super().__init__()
         self.llm_config = llm_config
         self.storyboard = storyboard
@@ -277,6 +278,8 @@ class RegenerateFrameWorker(QObject):
         self.product_name = product_name
         self.product_desc = product_desc
         self.selling_points = selling_points
+        self.mode = mode
+        self.direction = direction
 
     def run(self):
         try:
@@ -299,6 +302,8 @@ class RegenerateFrameWorker(QObject):
                 product_desc=self.product_desc,
                 selling_points=self.selling_points,
                 on_chunk=on_chunk,
+                mode=self.mode,
+                direction=self.direction,
             )
             llm.close()
             self.finished.emit(self.frame_index, frame)
@@ -381,6 +386,12 @@ class MainWindow(QMainWindow):
             "H3 普通：叙事驱动，生成 H3 原生多模态描述提示词\n"
             "H3 导演台：H3 提示词 + 导演台文本格式（可直接粘贴到 ComfyUI H3 导演台）"
         )
+        # 从配置加载上次选择的模式
+        saved_mode = self.config.get("storyboard", {}).get("generation_mode", "standard")
+        mode_idx = self.mode_combo.findData(saved_mode)
+        if mode_idx >= 0:
+            self.mode_combo.setCurrentIndex(mode_idx)
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         toolbar.addWidget(self.mode_combo)
 
         toolbar.addSpacing(8)
@@ -722,6 +733,14 @@ class MainWindow(QMainWindow):
         from config import save_config
         save_config(self.config)
         self.statusBar().showMessage(f"已切换模型: {name}", 3000)
+
+    def _on_mode_changed(self):
+        """生成模式切换时保存到配置"""
+        mode = self.mode_combo.currentData() or "standard"
+        self.config.setdefault("storyboard", {})["generation_mode"] = mode
+        from config import save_config
+        save_config(self.config)
+        self.statusBar().showMessage(f"已切换生成模式: {self.mode_combo.currentText()}", 3000)
 
     def _apply_style(self):
         """应用全局样式 - Tokyo Night 深蓝主题"""
@@ -1164,8 +1183,10 @@ class MainWindow(QMainWindow):
         product_name = self.product_name_input.text().strip()
         product_desc = self.product_desc_input.toPlainText().strip()
         selling_points = self.selling_points_input.toPlainText().strip()
+        current_mode = self.mode_combo.currentData() or "standard"
+        direction = self.direction_input.text().strip() if hasattr(self, 'direction_input') else ""
 
-        self.status_label.setText(f"正在重新生成第 {index + 1} 帧提示词...")
+        self.status_label.setText(f"正在重新生成第 {index + 1} 帧提示词（{self.mode_combo.currentText()}）...")
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # 不确定进度
 
@@ -1179,6 +1200,8 @@ class MainWindow(QMainWindow):
             product_name=product_name,
             product_desc=product_desc,
             selling_points=selling_points,
+            mode=current_mode,
+            direction=direction,
         )
         self._regen_worker.moveToThread(self._regen_thread)
         self._regen_thread.started.connect(self._regen_worker.run)
