@@ -914,10 +914,13 @@ def _build_director_script(frames: list, lang: str = "en") -> str:
             imd = f.get("integrated_multimodal_description_cn", f.get("integrated_multimodal_description", ""))
 
         # 导演台格式：[Shot N] + 时间戳(可选) + 空格 + 描述
-        # 如果 imd 已经以 [Shot N] 开头，不再重复
+        # 如果 imd 已经以 [Shot N] 开头，不再重复 shot_label，但需要插入 cut_timestamp
         if imd and imd.strip().startswith("[Shot"):
-            # imd 已包含 shot_label，直接用
-            lines.append(imd.strip())
+            text = imd.strip()
+            if cut_ts and not re.match(r'^\[Shot\s+\d+\]\s+At\s', text):
+                # 在 [Shot N] 后插入时间戳（parseOfficialScript 依赖 At mm:ss.mmm 计算分镜时长）
+                text = re.sub(r'^(\[Shot\s+\d+\])\s+', r'\1 ' + cut_ts + ' ', text)
+            lines.append(text)
         else:
             header = shot_label
             if cut_ts:

@@ -1014,7 +1014,7 @@ def generate_storyboard_h3(
             transition=result.get("transition", frame_plan["transition"]),
             motion_phase=result.get("motion_phase", "static"),
             shot_label=result.get("shot_label", f"[Shot {frame_num}]"),
-            cut_timestamp=result.get("cut_timestamp", cut_ts) or cut_ts,
+            cut_timestamp=cut_ts,  # 强制用代码累计计算，忽略 LLM 返回值
             integrated_multimodal_description=result.get("integrated_multimodal_description", ""),
             integrated_multimodal_description_cn=result.get("integrated_multimodal_description_cn", ""),
         )
@@ -1304,7 +1304,7 @@ def _regenerate_frame_h3(
         transition=result.get("transition", old_frame.transition or "none"),
         motion_phase=result.get("motion_phase", old_frame.motion_phase or "static"),
         shot_label=result.get("shot_label", f"[Shot {frame_num}]"),
-        cut_timestamp=result.get("cut_timestamp", cut_ts) or cut_ts,
+        cut_timestamp=cut_ts,  # 强制用代码累计计算，忽略 LLM 返回值
         integrated_multimodal_description=result.get("integrated_multimodal_description", ""),
         integrated_multimodal_description_cn=result.get("integrated_multimodal_description_cn", ""),
     )
