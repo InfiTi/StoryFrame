@@ -182,6 +182,13 @@ class LLMClient:
 
         text = text.strip()
 
+        # 0. 修复双花括号（LLM 偶发输出 {{ }} 而非 { }）
+        # 只在开头是 {{ 或结尾是 }} 时修复，避免影响 JSON 内部字符串
+        if text.startswith('{{'):
+            text = '{' + text[2:]
+        if text.endswith('}}'):
+            text = text[:-2] + '}'
+
         # 1. 直接解析
         try:
             return json.loads(text)
