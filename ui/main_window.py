@@ -1712,10 +1712,20 @@ class MainWindow(QMainWindow):
                 return  # 用户取消
             reference_images = [reference_image]
 
-        # 创建输出目录
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        project_dir = OUTPUT_DIR / f"{self.current_storyboard.product_name}_{timestamp}"
-        project_dir.mkdir(parents=True, exist_ok=True)
+        # 输出目录：优先复用已有图片的目录，否则创建新目录
+        existing_dir = None
+        for idx in indices:
+            frame = self.current_storyboard.frames[idx]
+            if frame.image_path:
+                existing_dir = os.path.dirname(frame.image_path)
+                break
+
+        if existing_dir and Path(existing_dir).exists():
+            project_dir = Path(existing_dir)
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            project_dir = OUTPUT_DIR / f"{self.current_storyboard.product_name}_{timestamp}"
+            project_dir.mkdir(parents=True, exist_ok=True)
 
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, len(indices))
