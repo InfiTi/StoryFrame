@@ -1060,6 +1060,10 @@ def get_h3_plan_prompt(product_name: str, product_desc: str, selling_points: str
     """
     style_name = template.name if template else ""
     style_desc = template.description if template else ""
+    # 视觉配方：优先用模板的 visual_recipe，空则用 image_style_words 拼接
+    recipe = ""
+    if template:
+        recipe = template.visual_recipe or ", ".join(template.image_style_words)
 
     prompt = f"""你是一个专业的产品广告分镜导演，精通 Apple 风格极简产品广告方法论。
 
@@ -1080,6 +1084,15 @@ def get_h3_plan_prompt(product_name: str, product_desc: str, selling_points: str
         if style_desc:
             prompt += f"（{style_desc}）"
         prompt += "\n"
+    if recipe:
+        prompt += f"""
+## 视觉配方（全片基调，必须遵守）
+这是当前风格模板的可执行视觉配方——所有帧的画面语言都必须从这套配方演化，禁止脱离配方自由发挥：
+
+{recipe}
+
+配方是「全片基调」，Step 3.5 的预设光照是「单帧镜头语言」，两者都要遵守，冲突时以配方优先。
+"""
 
     prompt += f"""
 ## 方法论
@@ -1212,6 +1225,10 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
                        用于让 imd 描述精确到帧号。
     """
     style_name = template.name if template else ""
+    # 视觉配方：优先用模板的 visual_recipe，空则用 image_style_words 拼接
+    recipe = ""
+    if template:
+        recipe = template.visual_recipe or ", ".join(template.image_style_words)
 
     # 从 plan 获取约束
     camera_motion = ""
@@ -1230,6 +1247,7 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
     info_line = f"- 详细：{product_info}" if product_info else ""
     direction_line = f"- 视频方向：{direction}" if direction else ""
     style_line = f"- 风格：{style_name}" if style_name else ""
+    recipe_line = f"## 视觉配方（本帧画面基调，必须遵守）\n{recipe}" if recipe else ""
     prev_section = ""
     if prev_frame_summary:
         prev_section = "## 前帧摘要\n" + prev_frame_summary
@@ -1275,6 +1293,7 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
 {direction_line}
 {style_line}
 
+{recipe_line}
 {plan_section}
 {prev_section}
 {timeline_line}

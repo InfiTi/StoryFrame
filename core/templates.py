@@ -30,6 +30,8 @@ class StyleTemplate:
     pacing_strategy: str = "均匀分配"
     # 新增：负向排除词（按风格区分）
     negative_words: str = "no text, no words, no letters, no logo, no watermark, no label, no hands, no people"
+    # 新增：视觉配方（可执行摄影配方，纯具体词，供 H3 模式注入；空则用 image_style_words 兜底）
+    visual_recipe: str = ""
 
 
 # 内置默认模板
@@ -207,6 +209,13 @@ _DEFAULT_TEMPLATES = [
         bgm="冲击感",
         impact_level="高",
         pacing_strategy="前紧后松",
+        visual_recipe=(
+            "dark matte seamless background, single hard side-light from left, "
+            "crisp rim light outlining product edge, product centered with one bold "
+            "color pop, fast push-in with hard stop, one quick product motion burst, "
+            "high contrast, clean sharp edges, no particles, no smoke, no fluid "
+            "simulation, no complex background, no multiple objects"
+        ),
     ),
 ]
 
@@ -230,6 +239,7 @@ def _load_templates() -> List[StyleTemplate]:
                     impact_level=item.get("impact_level", "中"),
                     pacing_strategy=item.get("pacing_strategy", "均匀分配"),
                     negative_words=item.get("negative_words", "no text, no words, no letters, no logo, no watermark, no label, no hands, no people"),
+                    visual_recipe=item.get("visual_recipe", ""),
                 ))
             if templates:
                 return templates
