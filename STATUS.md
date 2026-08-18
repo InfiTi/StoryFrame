@@ -1,12 +1,12 @@
 # StoryFrame 项目状态
 
-> 最后更新: 2026-08-19 | 版本 v0.14.0
+> 最后更新: 2026-08-19 | 版本 v0.14.1
 
 ## 概述
 分镜图生成器 — 商品信息 → 分镜脚本 → 图片/视频提示词，PySide6 桌面应用。统一生成接口支持多 provider 切换。
 
 ## 当前状态
-- **版本**: v0.14.0
+- **版本**: v0.14.1
 - **阶段**: 三模式分镜生成（标准模式：预设驱动 + H3 普通：叙事驱动 + H3 导演台：ComfyUI H3 导演台脚本格式）
 
 ## 已完成
@@ -117,6 +117,14 @@
 | prompts/few_shot_extracted.json | 按质感分类的 few-shot 示例（4 类各 8 条） |
 
 ## 最近变更
+
+### v0.14.1 (2026-08-19) — H3 模式接入预设光照系统
+- **根因**: H3 模式完全不接 SHOT_PRESETS，光照全靠 LLM 自由发挥，画面平庸
+- **get_h3_plan_prompt 新增 Step 3.5**: 商业镜头预设选择（质感→预设矩阵 + 12 个预设光照），plan 输出 preset_id + lighting 字段
+- **get_h3_frame_prompt 新增 lighting 参数**: plan 约束段注入光照 + imd 写作要求第 7 条光照描述，禁止 "well-lit" 空泛词
+- **h3_system_prompt.md 新增光照系统写作规范**: 光源方向（side-light/rim/backlight/volumetric）+ 光质（hard/soft diffused）+ 色温（warm/cool）+ 质感联动（酥脆硬光/软糯柔光/冰爽冷调）
+- **StoryboardFrame 新增 lighting 字段**: 主流程存储 + 单帧重生提取
+- **验证**: plan/frame/system 三处注入全部 ✅，编译通过 ✅
 
 ### v0.14.0 (2026-08-19) — H3 imd 帧号时间轴结构：精准到帧的元素/动作/声音编排
 - **imd 结构升级**: integrated_multimodal_description 从线性叙事改为「帧号时间轴」结构（24fps，帧号从 0 开始），每个画面元素标注出现帧号 + 动作帧号区间
