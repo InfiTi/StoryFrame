@@ -90,6 +90,34 @@ Frame 21-23: Freeze on stretched strands, transition preparation.
 | 展示类 | 产品全貌 | Static Shot | 静止展示 |
 | 展示类 | 旋转揭示 | Arc Shot | 弧线围绕主体 |
 
+## 光照系统写作规范（核心）
+每帧描述必须明确写出光照系统——光源方向、光质、色温，让画面有体积感和高级感。禁止只用 "well-lit" 或 "good lighting" 这种空泛词。
+
+### 光源方向（写进描述）
+- `side-light from left/right`：侧光，强化材质纹理和轮廓
+- `key light from upper right/left`：主光，确定整体亮度基调
+- `backlight / rim light`：逆光/轮廓光，勾勒产品边缘，制造与背景分离
+- `top soft diffused`：顶部柔光，均匀无阴影（俯拍场景）
+- `volumetric light`：体积光，光束可见（氛围场景）
+
+### 光质（写进描述）
+- `hard light`：硬光，锐利阴影，强化酥脆/金属质感
+- `soft diffused`：柔光，柔和过渡，强化软糯/奶油质感
+- `focused hard light on subject + soft ambient fill`：聚焦硬光打主体+环境柔光补光
+
+### 色温（写进描述）
+- `warm side-backlight`：暖色侧逆光，食品暖调
+- `cool white fill`：冷白补光，冰爽/科技感
+- `warm soft key light`：暖色柔主光，烘焙暖调
+
+### 组合示例
+- `single hard side-light from left + rim light`：左侧单硬光+轮廓光——酥脆产品碎裂瞬间，碎片被锐利勾勒
+- `soft diffused key from upper right + warm side-backlight`：右上柔主光+暖侧逆光——软糯产品，光晕柔和包裹
+- `top soft diffused + side fill`：顶部柔光+侧补光——俯拍排列，无阴影干扰
+- `volumetric light from upper left`：左上体积光——冰爽雾气场景，光束穿雾
+
+光照必须与产品质感联动：酥脆用硬光强化碎裂锐利感，软糯用柔光营造绵密感，冰爽用冷调体积光，液态用高光表现流动光泽。
+
 ## 节奏设计原则
 - 第1帧（黄金前3秒）：强钩子画面，快速揭示有吸引力的产品动作或角度
 - 中间帧：每帧聚焦一个质感卖点，一帧一个主动作

@@ -41,6 +41,7 @@ class StoryboardFrame:
     cut_timestamp: str = ""           # H3 切点时间戳，如 At 00:03.500,
     integrated_multimodal_description: str = ""      # H3 多模态综合描述（英文）
     integrated_multimodal_description_cn: str = ""   # H3 多模态综合描述（中文）
+    lighting: str = ""                # H3 光照系统（来自 plan 的 preset lighting）
 
 
 @dataclass
@@ -940,6 +941,8 @@ def generate_storyboard_h3(
             "product_action": p.get("product_action", ""),
             "camera_motion": p.get("camera_motion", ""),
             "input_mode": p.get("input_mode", "I2VA"),
+            "preset_id": p.get("preset_id", ""),
+            "lighting": p.get("lighting", ""),
             "transition": transition,
             "duration_rationale": p.get("duration_rationale", ""),
         })
@@ -1019,6 +1022,7 @@ def generate_storyboard_h3(
             cut_timestamp=cut_ts,  # 强制用代码累计计算，忽略 LLM 返回值
             integrated_multimodal_description=result.get("integrated_multimodal_description", ""),
             integrated_multimodal_description_cn=result.get("integrated_multimodal_description_cn", ""),
+            lighting=frame_plan.get("lighting", ""),
         )
         frames.append(frame)
 
@@ -1254,6 +1258,7 @@ def _regenerate_frame_h3(
         "narrative_beat": old_frame.description,
         "product_action": "",
         "camera_motion": old_frame.camera_motion or "",
+        "lighting": old_frame.lighting or "",
         "transition": old_frame.transition or "none",
         "input_mode": "I2VA",
         "duration_rationale": "",

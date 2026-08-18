@@ -1109,6 +1109,35 @@ def get_h3_plan_prompt(product_name: str, product_desc: str, selling_points: str
 - 产品全貌 → Static Shot
 - 旋转揭示 → Arc Shot
 
+### Step 3.5: 商业镜头预设选择（重要）
+每一帧从预设库中选择一个预设（预设锁定了运镜/角度/光线/速度曲线/过渡）。
+
+**质感→预设分配矩阵**（按帧位选择）：
+| 质感 | 开场(第1帧) | 中间帧(轮换) | 结尾帧 |
+|------|-----------|------------|--------|
+| 酥脆类 | PRESET-O1 | PRESET-M1 → M2 → M7 → M4（轮换） | PRESET-E1 |
+| 软糯类 | PRESET-O2 | PRESET-M6 → M7 → M2 → M8（轮换） | PRESET-E3 |
+| 液态/夹心类 | PRESET-O2 | PRESET-M6 → M7 → M4 → M8（轮换） | PRESET-E1 |
+| 冰爽类 | PRESET-O3 | PRESET-M3 → M8 → M5 → M7（轮换） | PRESET-E2 |
+
+**预设光照系统**（写入每帧的 lighting 字段，imd 描述必须使用）：
+- PRESET-O1（微距碎裂冲击）: single hard side-light from left + rim light, solid dark background
+- PRESET-O2（慢推质感揭示）: soft diffused key from upper right + warm side-backlight, warm gradient background
+- PRESET-O3（俯拍全貌定格）: top soft diffused + side fill, textured surface (marble/slate/wood)
+- PRESET-M1（甩镜滑入揭示）: soft diffused + crisp rim light on leading edge
+- PRESET-M2（焦点变换）: focused hard light on subject + soft ambient fill
+- PRESET-M3（环绕展示）: three-point lighting + rim light
+- PRESET-M4（急速拉远全貌）: volumetric light from upper left
+- PRESET-M5（俯拍旋转）: top soft diffused + side fill
+- PRESET-M6（慢推形变特写）: soft diffused key + warm rim light
+- PRESET-M7（急推爆点特写）: single hard side-light + rim light, dark background
+- PRESET-M8（快速横切对比）: soft diffused + crisp rim light
+- PRESET-E1（拉远全景定格）: warm soft key light + gentle rim light
+- PRESET-E2（俯拍排列全景）: top soft diffused + side fill
+- PRESET-E3（极致特写）: soft diffused key + dramatic rim light
+
+每帧 JSON 必须输出 `preset_id`（如 PRESET-M2）和 `lighting`（从对应预设复制，如 "soft diffused key + warm rim light"）。
+
 ### Step 4: 时长分配
 总时长 {total_duration} 秒，分配到 {frame_count} 帧。
 - 短帧（0.5-1.0s）：快切、碎裂、飞溅等瞬时动作
@@ -1148,6 +1177,8 @@ def get_h3_plan_prompt(product_name: str, product_desc: str, selling_points: str
     "narrative_beat": "开场：产品全貌建立",
     "product_action": "产品 Frame 0-6 静止 / 手 Frame 7-18 入画拿取 / Frame 19-23 举起",
     "camera_motion": "Push In",
+    "preset_id": "PRESET-O2",
+    "lighting": "soft diffused key from upper right + warm side-backlight",
     "transition": "fade",
     "duration_rationale": "开场冲击需要短帧快节奏"
   }}
@@ -1158,6 +1189,8 @@ def get_h3_plan_prompt(product_name: str, product_desc: str, selling_points: str
 - narrative_beat: 该帧在叙事脊柱中的角色（开场/发展/高潮/收尾）
 - product_action: 该帧产品做什么物理动作（具体、视觉化，**必须用帧号区间描述元素动作**，如"手 Frame 7-18 入画拿取"）
 - camera_motion: 运镜类型（从联动规则推导，不是随意选）
+- preset_id: 从 Step 3.5 矩阵选择的商业预设 ID（如 PRESET-M2）
+- lighting: 从对应预设复制的光照描述（如 "soft diffused key + warm rim light"）
 - transition: 过渡到下一帧的方式
 
 直接输出 JSON 数组，不要输出其他内容。
@@ -1169,7 +1202,8 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
                          product_name: str, product_desc: str, selling_points: str,
                          template, product_info: str = "",
                          prev_frame_summary: str = "", direction: str = "",
-                         frame_plan: dict = None, frame_start_frame: int = 1) -> str:
+                         frame_plan: dict = None, frame_start_frame: int = 1,
+                         lighting: str = "") -> str:
     """H3 模式逐帧生成提示词
 
     H3 frame 的核心策略：按 plan 锁定的运镜和产品动作写 integrated_multimodal_description。
@@ -1189,6 +1223,8 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
         product_action = frame_plan.get("product_action", "")
         narrative_beat = frame_plan.get("narrative_beat", "")
         transition = frame_plan.get("transition", "")
+        if not lighting:
+            lighting = frame_plan.get("lighting", "")
 
     # 构建可选信息行
     info_line = f"- 详细：{product_info}" if product_info else ""
@@ -1212,7 +1248,7 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
 
     # plan 约束段
     plan_section = ""
-    if camera_motion or product_action or narrative_beat:
+    if camera_motion or product_action or narrative_beat or lighting:
         plan_section = "## 本帧 plan 约束（必须遵守）\n"
         if narrative_beat:
             plan_section += f"- 叙事节拍：{narrative_beat}\n"
@@ -1220,6 +1256,8 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
             plan_section += f"- 产品动作：{product_action}\n"
         if camera_motion:
             plan_section += f"- 运镜类型：{camera_motion}（必须使用此运镜，写进描述中）\n"
+        if lighting:
+            plan_section += f"- 光照系统：{lighting}（必须使用此光照，写进描述中）\n"
         if transition and transition.lower() != "none":
             plan_section += f"- 过渡到下一帧：{transition}\n"
 
@@ -1264,7 +1302,8 @@ Frame {frame_end - 1}-{frame_end}: <关键帧标注> <定格/爆发/过渡准备
 4. **声音-帧号绑定**：物理音效（crunch/sizzle/drip 等）标注触发帧号
 5. **质感描述**：颜色、形状、材质、截面等物理特征写进对应元素首次出现的帧段
 6. **镜头运动**：必须使用 plan 指定的 camera_motion 类型，写成自然英语动作（含幅度和速度），标注起始帧号
-7. **节奏控制**：本帧 {frame_count} 帧内必须有明确的动静节奏——起始状态、动作发展阶段、关键帧/爆发点、结束状态，不能从头到尾一个速度
+7. **光照描述（重要）**：必须使用 plan 指定的 lighting 光照系统，把光源方向、光质、色温写进描述中——如 "single hard side-light from left"（左侧单硬光）、"crisp rim light"（锐利轮廓光）、"warm side-backlight"（暖色侧逆光）。光照要服务于突出产品材质和体积，不是简单一句 "well-lit"
+8. **节奏控制**：本帧 {frame_count} 帧内必须有明确的动静节奏——起始状态、动作发展阶段、关键帧/爆发点、结束状态，不能从头到尾一个速度
 
 开头声明整体风格（Cinematic / 3D CG / Live-action 等）。9:16 竖屏，关键元素在中间 80%。
 这是一体化叙事，不是字段拼凑。
@@ -1281,6 +1320,7 @@ Frame {frame_end - 1}-{frame_end}: <关键帧标注> <定格/爆发/过渡准备
 - integrated_multimodal_description_cn 纯中文，禁止残留英文
 - 画面比例 9:16 竖屏，关键元素在中间 80%
 - 帧号必须落在本帧区间（Frame {frame_start_frame} - {frame_end}）内，不能越界到其他帧
+- 光照必须使用 plan 指定的 lighting（{lighting or "无"}），不能随意更换
 - 直接输出 JSON，不要输出其他内容
 
 ## 输出格式
