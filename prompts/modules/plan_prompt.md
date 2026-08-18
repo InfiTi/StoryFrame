@@ -9,10 +9,10 @@
 
 | 质感 | 开场(第1帧) | 中间帧(轮换) | 结尾帧 |
 |------|-----------|------------|--------|
-| 酥脆类 | PRESET-O1 | PRESET-M1 → M2 → M4 → M1（轮换） | PRESET-E1 |
-| 软糯类 | PRESET-O2 | PRESET-M6 → M2 → M3 → M6（轮换） | PRESET-E3 |
-| 液态/夹心类 | PRESET-O2 | PRESET-M6 → M2 → M4 → M6（轮换） | PRESET-E1 |
-| 冰爽类 | PRESET-O3 | PRESET-M3 → M5 → M2 → M3（轮换） | PRESET-E2 |
+| 酥脆类 | PRESET-O1 | PRESET-M1 → M2 → **M7** → M4 → M1（轮换） | PRESET-E1 |
+| 软糯类 | PRESET-O2 | PRESET-M6 → **M7** → M2 → **M8** → M6（轮换） | PRESET-E3 |
+| 液态/夹心类 | PRESET-O2 | PRESET-M6 → **M7** → M4 → **M8** → M6（轮换） | PRESET-E1 |
+| 冰爽类 | PRESET-O3 | PRESET-M3 → **M8** → M5 → **M7** → M3（轮换） | PRESET-E2 |
 
 ### 中间帧轮换规则
 1. 按"→"顺序轮换，不重复相邻帧用相同预设
@@ -23,21 +23,23 @@
 
 **开场帧预设：**
 - PRESET-O1（酥脆专用）: fast push-in + hard stop, 45° overhead, 碎裂瞬间, 过渡→whip pan
-- PRESET-O2（软糯/液态专用）: slow push-in + hold, eye-level three-quarter, 缓慢形变, 过渡→speed ramp
-- PRESET-O3（冰爽专用）: pull back + hold, 90° overhead, 静止+氛围元素, 过渡→fade
+- PRESET-O2（软糯/液态专用）: slow push-in + hold, eye-level three-quarter, 缓慢形变（必须有可见形变，禁止产品完全静止）, 过渡→speed ramp
+- PRESET-O3（冰爽专用）: pull back + hold, 90° overhead, 静止+氛围元素（雾气必须有上升轨迹或冷凝水珠有滑落方向）, 过渡→fade
 
 **中间帧预设：**
 - PRESET-M1: whip pan + freeze, eye-level three-quarter, 产品滑入, 过渡→whip pan/speed ramp
-- PRESET-M2: rack focus, macro three-quarter, 焦点转移（两个焦点都必须是产品本身的不同细节，禁止引入包装/道具/背景元素）, 过渡→hard cut/whip pan
-- PRESET-M3: arc shot 90° + hold, eye-level, 环绕展示, 过渡→speed ramp/fade
+- PRESET-M2: rack focus, macro three-quarter, 焦点转移（两个焦点都必须是产品本身的不同细节，禁止引入包装/道具/背景元素；转移过程中必须有 1 个可见物理变化）, 过渡→hard cut/whip pan
+- PRESET-M3: arc shot 90° + hold, eye-level, 环绕展示（环绕过程中必须有光泽变化或蒸汽飘动，禁止纯静止环绕）, 过渡→speed ramp/fade
 - PRESET-M4: snap zoom out + hold, slight overhead, 细节拉远全貌, 过渡→hard cut/whip pan
-- PRESET-M5: overhead rotation 180° + hold, 90° overhead, 俯拍旋转, 过渡→fade/speed ramp
-- PRESET-M6: slow push-in + hold, eye-level three-quarter, 形变特写, 过渡→speed ramp/morph
+- PRESET-M5: overhead rotation 180° + hold, 90° overhead, 俯拍旋转（旋转过程中必须有汁水/碎屑/粉末微粒位移）, 过渡→fade/speed ramp
+- PRESET-M6: slow push-in + hold, eye-level three-quarter, 形变特写（形变必须≥15%可见变化）, 过渡→speed ramp/morph
+- **PRESET-M7: fast push-in + hard stop, 45° overhead, 产品局部瞬间形变/爆裂/飞溅冲击瞬间定格, 过渡→whip pan/hard cut**
+- **PRESET-M8: quick pan + freeze, eye-level, 产品快速横移到中心定格或配料飞入撞击, 过渡→speed ramp/hard cut**
 
 **结尾帧预设：**
-- PRESET-E1: slow pull back + hold, eye-level slight overhead, 全景定格, 过渡→none
-- PRESET-E2: static hold, 90° overhead, 排列全景, 过渡→none
-- PRESET-E3: slow push-in + hold, eye-level three-quarter, 极致特写, 过渡→none
+- PRESET-E1: slow pull back + hold, eye-level slight overhead, 全景定格（前 60% 必须有残余动态，后 40% 才允许 hold）, 过渡→none
+- PRESET-E2: static hold, 90° overhead, 排列全景（画面中必须有 1 处微动态元素）, 过渡→none
+- PRESET-E3: slow push-in + hold, eye-level three-quarter, 极致特写（推进过程中必须有光泽渐变或纹理放大变化）, 过渡→none
 
 ## 节奏设计原则
 - 第1帧（黄金前3秒）：强钩子画面，带爆炸/撞击/飞溅等强动态趋势

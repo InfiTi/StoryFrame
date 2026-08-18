@@ -34,6 +34,28 @@
 - `The camera pushes in with small amplitude at slow speed toward the product.`
 - `The camera holds a static shot as the crumbs settle.`
 
+#### 帧号时间轴写法（核心）
+本系统以 24fps 为准（1 秒 = 24 帧，帧号从 0 开始）。integrated_multimodal_description 必须按帧号时间轴组织：
+
+**每个画面元素（产品、手部、汁水、蒸汽、碎片等）都要标注它出现的帧号，以及在该帧号上做了什么动作。**
+
+```
+[Shot N] Cinematic, close-up, 9:16 vertical. 24 frames (Frame 0-23).
+
+Frame 0-5: The golden waffle sits centered, steam rising gently.
+Frame 6-14: Hands enter from bottom edge, gripping both sides (element entry).
+Frame 15-20: Pull apart, elastic strands form between halves, tearing sound starts.
+Frame 20 (burst point): Strands stretch to maximum, glaze glints, speed accelerates.
+Frame 21-23: Freeze on stretched strands, transition preparation.
+```
+
+写作要求：
+- 元素-帧号精确绑定：谁在哪个帧号区间出现/消失/变化
+- 动作-帧号精确绑定：动作从哪帧开始、持续到哪帧、哪帧是爆发点
+- 声音-帧号绑定：音效标注触发帧号
+- 关键帧用括号标注（如 Frame 20 (burst point): ...）
+- 每帧必须有动静节奏：起始状态 → 动作发展 → 关键帧/爆发点 → 结束状态，不能从头到尾一个速度
+
 #### 画面内声音
 产品动作的物理音效融入描述：
 - `A sharp crunch sound marks the moment of fracture...`
@@ -41,7 +63,7 @@
 
 写作要求：
 - 自然英语连贯描述，不要用 → 箭头，不要用项目列表
-- 每段 80-150 词
+- **不要限制字数，信息密度优先**：元素越多、帧号越精确、动作阶段越清晰越好，能写多具体就写多具体
 
 ## 材质描述词汇表
 | 类型 | 精确术语 | 模糊词 |
@@ -99,7 +121,7 @@
 - cut_timestamp: 切点时间戳（第1帧为空，后续帧如 "At 00:03.500,"）
 - duration: 持续秒数
 - motion_phase: 动作相位
-- integrated_multimodal_description: 英文多模态综合描述（80-150词）
+- integrated_multimodal_description: 英文多模态描述（帧号时间轴结构，不限字数）
 - integrated_multimodal_description_cn: 中文多模态描述
 - description: 中文简述（15-25字）
 
@@ -112,7 +134,7 @@
   "cut_timestamp": "",
   "duration": 1.2,
   "motion_phase": "mid-action",
-  "integrated_multimodal_description": "[Shot 1] Cinematic, a medium-wide shot frames a crispy golden-brown cracker on a dark charcoal surface. The cracker is in mid-shatter, three fragments separating outward with fine sugar crystals suspended mid-air. The camera pushes in with large amplitude at fast speed toward the impact point. A single hard side-light from the left casts sharp shadows on the fragment edges while rim light outlines the silhouette. A sharp crunch sound marks the moment of fracture, followed by the soft patter of crumbs settling on the surface.",
-  "integrated_multimodal_description_cn": "[Shot 1] 电影质感，中远景拍摄深炭色表面上的金棕色酥脆饼干。饼干正处于碎裂中段，三块碎片向外分离，细糖晶悬浮半空。镜头以快速大幅度推向撞击点。左侧硬侧光在碎片边缘投射锐利阴影，轮廓光勾勒剪影。清脆的碎裂声标记断裂瞬间，随后是碎屑落回表面的轻柔声。",
+  "integrated_multimodal_description": "[Shot 1] Cinematic, a medium-wide shot frames a crispy golden-brown cracker on a dark charcoal surface. 28 frames (Frame 0-27). Frame 0-6: the cracker sits intact, fine sugar crystals glistening on its surface, camera holds. Frame 7-12: the cracker starts to fracture from the center, hairline cracks spreading outward. Frame 13-18 (burst point): three fragments separate outward, fine sugar crystals suspended mid-air, a sharp crunch sound marks the moment of fracture. Frame 19-24: fragments settle, camera pushes in with large amplitude at fast speed toward the impact point, rim light outlines the silhouette. Frame 25-27: freeze on the settled fragments, soft patter of crumbs fading out.",
+  "integrated_multimodal_description_cn": "[Shot 1] 电影质感，中远景拍摄深炭色表面上的金棕色酥脆饼干。共 28 帧（Frame 0-27）。Frame 0-6：饼干完整静置，表面细糖晶闪耀，镜头保持。Frame 7-12：饼干从中心开始碎裂，发丝状裂纹向外扩散。Frame 13-18（爆发点）：三块碎片向外分离，细糖晶悬浮半空，清脆的碎裂声标记断裂瞬间。Frame 19-24：碎片落定，镜头以快速大幅度推向撞击点，轮廓光勾勒剪影。Frame 25-27：定格在落定的碎片上，碎屑轻柔落地声渐弱。",
   "description": "酥脆饼干碎裂爆点开场"
 }

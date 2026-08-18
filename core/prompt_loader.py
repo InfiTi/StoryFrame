@@ -1114,6 +1114,21 @@ def get_h3_plan_prompt(product_name: str, product_desc: str, selling_points: str
 - 短帧（0.5-1.0s）：快切、碎裂、飞溅等瞬时动作
 - 长帧（1.5-2.5s）：拉丝、流淌、渐显等持续动作
 - 节奏前紧后松：开场爆点用短帧，结尾收稳用长帧
+- 帧率 24fps：每帧时长 × 24 = 该帧帧数，帧号从 0 开始累计
+
+### Step 4.5: 帧号时间轴规划（重要）
+在 plan 中为每帧规划**该帧内的时间轴**：product_action 必须用帧号区间描述元素动作。
+
+示例（总时长 6s、6 帧、24fps）：
+- 第1帧（1.0s = 24帧，Frame 0-23）：Frame 0-6 产品静止建立 / Frame 7-18 手入画拿取 / Frame 19-23 举起（爆发准备）
+- 第2帧（1.5s = 36帧，Frame 24-59）：Frame 24-30 悬停 / Frame 31-50 撕拉动作 / Frame 51-59 拉丝形成（关键帧 50：爆发点）
+- 最后一帧：Frame X-end 产品完整定格，收尾
+
+要求：
+1. 每帧的 product_action 字段写成"元素 + 帧号区间 + 动作"的格式（如"手 Frame 7-18 入画拿取"）
+2. 每帧必须规划：初始状态帧段、动作发展阶段帧段、关键帧/爆发点、结束状态帧段
+3. 全片至少 1-2 个爆发性动作帧段（burst/explode/crash），禁止全程缓慢
+4. 相邻帧的帧号区间连续无重叠（上一帧结束帧号 + 1 = 下一帧起始帧号）
 
 ### Step 5: 过渡方式
 为每帧指定过渡到下一帧的方式：
@@ -1131,7 +1146,7 @@ def get_h3_plan_prompt(product_name: str, product_desc: str, selling_points: str
     "duration": 1.0,
     "shot_label": "[Shot 1]",
     "narrative_beat": "开场：产品全貌建立",
-    "product_action": "酥脆饼干碎裂飞溅",
+    "product_action": "产品 Frame 0-6 静止 / 手 Frame 7-18 入画拿取 / Frame 19-23 举起",
     "camera_motion": "Push In",
     "transition": "fade",
     "duration_rationale": "开场冲击需要短帧快节奏"
@@ -1141,7 +1156,7 @@ def get_h3_plan_prompt(product_name: str, product_desc: str, selling_points: str
 
 字段说明：
 - narrative_beat: 该帧在叙事脊柱中的角色（开场/发展/高潮/收尾）
-- product_action: 该帧产品做什么物理动作（具体、视觉化）
+- product_action: 该帧产品做什么物理动作（具体、视觉化，**必须用帧号区间描述元素动作**，如"手 Frame 7-18 入画拿取"）
 - camera_motion: 运镜类型（从联动规则推导，不是随意选）
 - transition: 过渡到下一帧的方式
 
@@ -1154,10 +1169,13 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
                          product_name: str, product_desc: str, selling_points: str,
                          template, product_info: str = "",
                          prev_frame_summary: str = "", direction: str = "",
-                         frame_plan: dict = None) -> str:
+                         frame_plan: dict = None, frame_start_frame: int = 1) -> str:
     """H3 模式逐帧生成提示词
 
     H3 frame 的核心策略：按 plan 锁定的运镜和产品动作写 integrated_multimodal_description。
+
+    frame_start_frame: 本帧在全片中的起始帧号（24fps，帧号从 0 开始），
+                       用于让 imd 描述精确到帧号。
     """
     style_name = template.name if template else ""
 
@@ -1180,6 +1198,17 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
     if prev_frame_summary:
         prev_section = "## 前帧摘要\n" + prev_frame_summary
     ts_hint = "（第1帧留空）" if frame_num == 1 else "At 00:XX.XXX,（根据总时长推算）"
+
+    # 帧号时间轴信息（24fps）
+    frame_count = max(1, round(duration * 24))
+    frame_end = frame_start_frame + frame_count - 1
+    timeline_line = (
+        f"## 帧号时间轴\n"
+        f"- 视频帧率：24fps（1秒 = 24帧，帧号从 0 开始计数）\n"
+        f"- 本帧时长：{duration:.1f} 秒 = {frame_count} 帧\n"
+        f"- 本帧覆盖帧号区间：Frame {frame_start_frame} - {frame_end}\n"
+        f"- 全片帧号范围：Frame 0 - {frame_start_frame + frame_count - 1}（本帧是第 {frame_num}/{total_frames} 帧）"
+    )
 
     # plan 约束段
     plan_section = ""
@@ -1210,19 +1239,34 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
 
 {plan_section}
 {prev_section}
+{timeline_line}
 
 ## 生成策略
 
 ### 核心任务：写 integrated_multimodal_description
-写一段 80-150 词的英文叙事，融合以下元素：
-- 开头声明整体风格（Cinematic / 3D CG / Live-action 等）
-- 画面主体：产品在做什么物理动作（按 plan 指定的 product_action）
-- 产品质感：颜色、形状、材质、截面等物理特征
-- 镜头运动：必须使用 plan 指定的 camera_motion 类型，写成自然英语动作（含幅度和速度）
-- 声音线索：产品动作产生的物理音效（crunch/sizzle/drip 等）
-- 环境氛围：光线/温度/空气感
-- 构图比例：9:16 竖屏，关键元素在中间 80%
+写一段英文叙事，描述本帧（Frame {frame_start_frame} - {frame_end}）内画面发生的一切。**不要限制字数，信息密度优先，能写多具体就写多具体。**
 
+必须按「帧号时间轴」的方式组织描述——画面中的每个元素都要标注它出现的帧号，以及在该帧号上做了什么动作：
+
+```
+[Shot N] <风格声明>, <景别>, 9:16 竖屏。共 {frame_count} 帧（Frame {frame_start_frame}-{frame_end}）。
+
+Frame {frame_start_frame}-{frame_start_frame + 2}: <元素A> 静止/初始状态，<环境描述>
+Frame {frame_start_frame + 3}-{frame_start_frame + 10}: <元素B> 入画，<动作描述>（含速度/幅度）
+Frame {frame_start_frame + 11}-{frame_end - 2}: <元素C> 出现并<动作>，<物理效果描述>
+Frame {frame_end - 1}-{frame_end}: <关键帧标注> <定格/爆发/过渡准备>
+```
+
+写作要求：
+1. **元素-帧号精确绑定**：每个画面元素（产品、手部、汁水、蒸汽、碎片等）都要写清它在哪个帧号区间出现/消失/变化
+2. **动作-帧号精确绑定**：每个动作（拉开、碎裂、流动、回弹、定格）都要写清它在哪个帧号发生、持续到哪个帧号
+3. **关键帧标注**：帧段后可用括号标注关键帧（如 Frame 20（爆发点）：碎片飞溅到最大幅度）
+4. **声音-帧号绑定**：物理音效（crunch/sizzle/drip 等）标注触发帧号
+5. **质感描述**：颜色、形状、材质、截面等物理特征写进对应元素首次出现的帧段
+6. **镜头运动**：必须使用 plan 指定的 camera_motion 类型，写成自然英语动作（含幅度和速度），标注起始帧号
+7. **节奏控制**：本帧 {frame_count} 帧内必须有明确的动静节奏——起始状态、动作发展阶段、关键帧/爆发点、结束状态，不能从头到尾一个速度
+
+开头声明整体风格（Cinematic / 3D CG / Live-action 等）。9:16 竖屏，关键元素在中间 80%。
 这是一体化叙事，不是字段拼凑。
 
 ### 补充字段
@@ -1236,6 +1280,7 @@ def get_h3_frame_prompt(frame_num: int, total_frames: int, duration: float,
 - 禁止出现文字、logo、包装文字、标签、水印
 - integrated_multimodal_description_cn 纯中文，禁止残留英文
 - 画面比例 9:16 竖屏，关键元素在中间 80%
+- 帧号必须落在本帧区间（Frame {frame_start_frame} - {frame_end}）内，不能越界到其他帧
 - 直接输出 JSON，不要输出其他内容
 
 ## 输出格式

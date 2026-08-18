@@ -954,6 +954,7 @@ def generate_storyboard_h3(
     total_frames = len(normalized_plan)
     frames: List[StoryboardFrame] = []
     elapsed = 0.0  # 用于累计 cut_timestamp
+    frame_start = 0  # 本帧在全片中的起始帧号（24fps）
 
     for i, frame_plan in enumerate(normalized_plan):
         frame_num = frame_plan["frame"]
@@ -983,6 +984,7 @@ def generate_storyboard_h3(
             prev_frame_summary=prev_summary,
             direction=direction,
             frame_plan=frame_plan,
+            frame_start_frame=frame_start,
         )
 
         messages = [
@@ -1022,6 +1024,7 @@ def generate_storyboard_h3(
 
         # 累计时长（用于下一帧时间戳）
         elapsed += frame.duration
+        frame_start += max(1, round(frame.duration * 24))  # 下一帧起始帧号（24fps）
 
         # 保存帧调试文件
         try:
@@ -1256,6 +1259,9 @@ def _regenerate_frame_h3(
         "duration_rationale": "",
     }
     
+    # 本帧在全片中的起始帧号（24fps，帧号从 0 开始）
+    frame_start = sum(max(1, round(f.duration * 24)) for f in frames[:frame_index])
+    
     h3_sys = get_h3_system_prompt(product_texture=texture_str)
     frame_user = get_h3_frame_prompt(
         frame_num=frame_num,
@@ -1269,6 +1275,7 @@ def _regenerate_frame_h3(
         prev_frame_summary=prev_frame_summary,
         direction=direction,
         frame_plan=frame_plan,
+        frame_start_frame=frame_start,
     )
     
     messages = [
