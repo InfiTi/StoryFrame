@@ -1,0 +1,261 @@
+{
+  "2": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": "资产角色：\n<Picture 1>\n国风动漫少女，深棕色发髻点缀红梅与蝶形发饰，身穿白金红相间的抹胸上衣与飘逸薄纱灯笼裤，周身环绕金红流光与炽炎花瓣特效。\n<Picture 2>\n硬派白发战将，身穿暗红色皮革长款风衣、黑色内衬与战术皮裤，手持重剑与双枪，周身散发冷冽红黑魔力气浪。\n\n一个低机位推近镜头框住\n<Picture 1>\n与\n<Picture 2>\n在废墟长廊两端对峙。\n<Picture 1>\n率先启动超音速贴地冲刺，足尖踏出金红烈焰莲华，甩出赤红绫缎如游龙贯空；\nthe camera cuts to\n侧面跟摇特写，\n<Picture 2>\n拔出重剑横向重劈，刀锋与炽炎绫缎剧烈碰撞，火星与雷光四向迸射，气浪撕裂地面石板。\nthe shot transitions to\n俯冲环绕镜头，\n<Picture 1>\n借力凌空翻腾，双掌结印召唤暴雨般金红火蝶与符文剑气垂直轰炸；\n<Picture 2>\n单手举剑格挡，魔力红光护盾展开，随即甩动红风衣滑步侧移，拔枪极速连射，火舌与剑气在半空接连引爆。\nthe camera dynamically follows\n贴地高速滑移，\n<Picture 1>\n在弹雨残影中多维瞬闪，瞬身突进至\n<Picture 2>\n身前旋身横扫，赤焰气刃斩开风衣下摆；\nthe shot changes to\n极速下坠定点特写，\n<Picture 2>\n反手抽刀上挑震开攻击，\n<Picture 1>\n空中旋身单手撑地滑退数米，\n<Picture 1>\n与\n<Picture 2>\n同时稳住身形横刃相对，周身烈火与魔能疯狂暴涨，在最强杀意临界点定格。\noverall_soundscape: Explosive shockwaves crack the stone ground as steel clashes with fiery energy ribbons. Gunfire roars in rapid bursts followed by the sizzling hum of burning petals and swirling demonic aura.non_diegetic_music: High-octane heavy metal hybrid with aggressive electric guitar riffs, pounding industrial drums, and intense symphonic brass, cutting off sharply on the final clash."
+    }
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_sol_vae_fp16.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    }
+  },
+  "7": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "21",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    }
+  },
+  "8": {
+    "class_type": "VAEDecodeAudio",
+    "inputs": {
+      "samples": [
+        "21",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ]
+    }
+  },
+  "9": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "image (2).png",
+      "upload": "image"
+    }
+  },
+  "11": {
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "inputs": {
+      "clip": [
+        "15",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "audio_vae": [
+        "4",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "53",
+        0
+      ],
+      "prompt": "subject_definitions:\n<Subject 1> 是 <Picture 1> 的视觉风格：毛毡毛绒立体拼贴（felt diorama）：蓬松毛绒球与毛毡片分层堆叠的微缩景箱，柔软体积感、浮于底布之上，光影柔和立体。羊毛纤维质感、絮状毛边、编结与缝线痕迹、布艺底布。柔和光线，毛毡投射绵软投影；轻微浅景深；OC 渲染质感、环境光遮蔽，高度风格化，8k 高清；配色：清新甜软的色系，奶甜质感、柔和明快，具体颜色由模型自由搭配。只取它的风格、材质与配色氛围，不取构图、元素与布局。\n资产角色（画面中出现的下列主体，必须与对应参考图保持一致）：\n<Picture 2> = 蜉蝣成虫：羊毛纤维制成的绒球与毛毡片呈现蜉蝣成虫的柔软体积感，絮状的毛边勾勒出翅膀的透明轮廓与尾须的轻盈质感。编结与缝线痕迹可见于腹部与尾须的连接处。配色为清新甜软的马卡龙色系，薄荷绿与奶油白交替呈现。（强保真：造型、比例、材质、配色与配饰必须与该参考图完全一致）\nsummary:\n[reference generation] 目标视频按下方时间轴全新生成，仅参考 <Subject 1> 的视觉风格；构图与元素位置不照抄 <Picture 1>（它只是风格来源），按 detailed_description 里的「画面内容」描述全新构建，允许在细节上新增元素与情节；但画面元素的动作与镜头运动必须严格按下方时间轴逐帧执行。\nretention_analysis:\n<Subject 1>: weak_reference - 仅保留视觉风格、材质与配色氛围；构图与元素布局按 detailed_description 的「画面内容」重新构建；画面元素的动作与镜头运动按下方时间轴执行。\n<Picture 2>（蜉蝣成虫）: strong_reference - 画面中出现该角色时，其造型、比例、材质、配色与配饰必须严格保持与参考图一致，不得改名、不得换成同类但外观不同的造物\ndetailed_description:\n毛毡毛绒立体拼贴（felt diorama）：蓬松毛绒球与毛毡片分层堆叠的微缩景箱，柔软体积感、浮于底布之上，光影柔和立体。羊毛纤维质感、絮状毛边、编结与缝线痕迹、布艺底布。柔和光线，毛毡投射绵软投影；轻微浅景深；OC 渲染质感、环境光遮蔽，高度风格化，8k 高清。\n画面内容：毛毡微缩办公室场景、居中是一只穿着小西装、系着领带的蜉蝣成虫、正站在奶油色迷你跑步机上双脚快速蹬踏；右侧挂着一块纸质工牌、上面贴满密密麻麻的小纸片便签代表待办事项；周围漂浮着几张小纸片便签；半透明纸塑汗珠散落在跑步机周围地面；整体采用系、蜜桃为主调、柔和光线从上方打下、毛毡材质呈现蓬松体积感与绵软投影、轻微浅景深使背景办公室元素柔和虚化；元素位置：主体蜉蝣居中站立在跑步机上、右侧悬挂工牌、周围漂浮便签纸片作为前景层次、跑步机占据中景下方、背景为虚化的毛毡办公室墙面与夏日冰淇淋色调。\n[Shot 1] 帧0 穿着小西装打着领带的毛毡蜉蝣成虫、脚踩迷你跑步机奋力奔跑从画面边缘快速滑入，瞬间落定画面中央（0.3 秒内完成入场），本镜场景布景从第 0 帧起同步完整就位（背景与场景元素即刻在场、画面不空场）；The camera pushes in with large amplitude at fast speed, snapping onto the subject；帧10 穿着小西装打着领带的毛毡蜉蝣成虫、脚踩迷你跑步机奋力奔跑场景初现：毛毡微型办公室里，迷你跑步机亮着微光，蜉蝣打工人已站在上面准备起跑，旁边挂着写满待办事项的纸质工牌，几张小纸片便签漂浮在周围；帧34 穿着小西装打着领带的毛毡蜉蝣成虫、脚踩迷你跑步机奋力奔跑蜉蝣双脚快速交替蹬踏跑步带，小西装随着动作微微抖动，汗珠（半透明纸塑圆球）从额头不断滚落砸向跑步带弹起，工牌上密密麻麻的待办事项纸片一条接一条被划掉飘落，蜉蝣咬紧牙关（头部微倾、触角紧绷）继续冲刺，身体前倾幅度加大但脚步不停，汗水越落越多汇成小水洼，蜉蝣力竭般踉跄一步后重新站稳，继续以坚定节奏奔跑，最后保持冲刺姿态缓缓收力定住；帧55 全体动作完成后自然落定，画面保持成片构图至镜末。\noverall_soundscape: 跑步机马达低频嗡嗡声、毛毡摩擦的沙沙声、汗滴落下的轻微啪嗒声\nnon_diegetic_music: None",
+      "width": [
+        "20",
+        0
+      ],
+      "height": [
+        "20",
+        1
+      ],
+      "length": [
+        "19",
+        1
+      ],
+      "ref_image_size": "match"
+    }
+  },
+  "15": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+      "type": "minimax",
+      "device": "default"
+    }
+  },
+  "17": {
+    "class_type": "PrimitiveFloat",
+    "inputs": {
+      "value": 3.1
+    }
+  },
+  "18": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "lcm"
+    }
+  },
+  "19": {
+    "class_type": "ComfyMathExpression",
+    "inputs": {
+      "values.a": [
+        "17",
+        0
+      ],
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17"
+    }
+  },
+  "20": {
+    "class_type": "ResolutionSelector",
+    "inputs": {
+      "aspect_ratio": "9:16 (Portrait Widescreen)",
+      "megapixels": 0.2,
+      "multiple": 32
+    }
+  },
+  "21": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "31",
+        0
+      ],
+      "guider": [
+        "29",
+        0
+      ],
+      "sampler": [
+        "18",
+        0
+      ],
+      "sigmas": [
+        "24",
+        0
+      ],
+      "latent_image": [
+        "11",
+        1
+      ]
+    }
+  },
+  "24": {
+    "class_type": "ManualSigmas",
+    "inputs": {
+      "sigmas": "1.0, 0.972973, 0.923077, 0.8, 0.571429, 0.333333, 0.0"
+    }
+  },
+  "29": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "37",
+        0
+      ],
+      "conditioning": [
+        "51",
+        0
+      ]
+    }
+  },
+  "30": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "MH3\\Minimax-h3_Singularity_x_10Eros-Max_PRISM_int8.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "31": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 984870826803328
+    }
+  },
+  "36": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "30",
+        0
+      ],
+      "lora_name": "pika_h3_flex_ref2va_v1_bf16.safetensors",
+      "strength_model": 1
+    }
+  },
+  "37": {
+    "class_type": "ModelAttentionBackend",
+    "inputs": {
+      "model": [
+        "36",
+        0
+      ],
+      "attention": "comfy kitchen attention"
+    }
+  },
+  "45": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": [
+        "7",
+        0
+      ],
+      "audio": [
+        "8",
+        0
+      ],
+      "fps": 24,
+      "bit_depth": 8,
+      "color_space": "sRGB",
+      "codec": "none"
+    }
+  },
+  "47": {
+    "class_type": "SFLatentSaver",
+    "inputs": {
+      "samples": [
+        "21",
+        0
+      ],
+      "filename_prefix": "latents/SFL"
+    }
+  },
+  "51": {
+    "class_type": "StarConditioningSaver",
+    "inputs": {
+      "conditioning": [
+        "11",
+        0
+      ],
+      "filename": "SFC"
+    }
+  },
+  "53": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "image (2).png",
+      "upload": "image"
+    }
+  },
+  "59": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "45",
+        0
+      ],
+      "filename_prefix": "video/SF/P",
+      "format": "auto",
+      "format.codec": "auto",
+      "codec": "auto"
+    }
+  }
+}
